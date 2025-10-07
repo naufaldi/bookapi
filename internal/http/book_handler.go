@@ -20,8 +20,15 @@ func NewBookHandler(repo usecase.BookRepository) *BookHandler {
 
 func (h *BookHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	genre := r.URL.Query().Get("genre")
-	publisher := r.URL.Query().Get("publisher")
+
+	// Build ListParams from query parameters
+	params := usecase.ListParams{
+		Genre:     r.URL.Query().Get("genre"),
+		Publisher: r.URL.Query().Get("publisher"),
+		Q:         r.URL.Query().Get("q"), // search query
+		Sort:      r.URL.Query().Get("sort"),
+		Desc:      r.URL.Query().Get("desc") == "true",
+	}
 
 	//pagination
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
@@ -29,13 +36,14 @@ func (h *BookHandler) List(w http.ResponseWriter, r *http.Request) {
 		page = 1
 	}
 	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
-	
+
 	if pageSize <= 0 || pageSize > 100 {
 		pageSize = 20
 	}
-	offset := (page - 1 ) * pageSize
+	params.Limit = pageSize
+	params.Offset = (page - 1) * pageSize
 
-	books, err := h.repo.List(ctx, genre, publisher, pageSize, offset)
+	books, total, err := h.repo.List(ctx, params)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -45,14 +53,15 @@ func (h *BookHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	resp := map[string]interface{}{
 		"data": books,
-		"meta" : map[string]int{
-			"page": page,
-			"page_size": pageSize,
+		"meta": map[string]interface{}{
+			"page":       page,
+			"page_size":  pageSize,
+			"total":      total,
+			"total_pages": (total + pageSize - 1) / pageSize, // ceiling division
 		},
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode((resp))
-
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (h *BookHandler) GetByISBN(w http.ResponseWriter, r *http.Request) {
