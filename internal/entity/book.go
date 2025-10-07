@@ -8,6 +8,7 @@ type Book struct {
 	Title     string    `json:"title"`
 	Genre     string    `json:"genre"`
 	Publisher string    `json:"publisher"`
+	Description string    `json:"description"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

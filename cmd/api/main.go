@@ -39,12 +39,13 @@ func main(){
 		w.Write([]byte("ok"))
 	})
 
+	mux.HandleFunc("/books", bookHandler.List)
+	mux.HandleFunc("/books/", bookHandler.GetByISBN)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request){
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Hello, World!"))
 	})
-	mux.HandleFunc("/books", bookHandler.List)
-
+	
 	srv := &http.Server{
 		Addr: addr,
 		Handler: mux,

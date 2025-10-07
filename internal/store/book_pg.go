@@ -4,8 +4,11 @@ package store
 
 import (
 	"bookapi/internal/entity"
+	"bookapi/internal/usecase"
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 type BookPG struct {
@@ -44,4 +47,24 @@ func (r * BookPG) List(ctx context.Context, genre,publisher string, limit, offse
 		return nil, err
 	}
 	return books, nil
+}
+
+
+func ( r *BookPG) GetByISBN(ctx context.Context, isbn string) (entity.Book, error){
+	const query = `
+	SELECT id, isbn, title, genre, publisher, description, created_at, updated_at
+	FROM books
+	WHERE isbn = $1
+	LIMIT 1
+	`
+	var b entity.Book
+	err := r.db.QueryRow(ctx, query, isbn).Scan(&b.ID, &b.ISBN, &b.Title, &b.Genre, &b.Publisher, &b.Description, &b.CreatedAt, &b.UpdatedAt)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows){
+			return entity.Book{}, usecase.ErrNotFound
+		}
+		return entity.Book{}, err
+	}
+	return b, nil
 }
