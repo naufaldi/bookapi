@@ -32,13 +32,21 @@ func main(){
 
 	bookRepo := store.NewBookPG(dbpool)
 	bookHandler := handler.NewBookHandler(bookRepo)
+		userRepo := store.NewUserPG(dbpool)
+	userHandler := handler.NewUserHandler(userRepo, getEnv("JWT_SECRET", "secret"))
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/users/register", userHandler.RegisterUser)
+	mux.HandleFunc("/users/login", userHandler.LoginUser)
+	httpMe := handler.AuthMiddleware(os.Getenv("JWT_SECRET"))(http.HandlerFunc(userHandler.GetCurrentUser))
+	mux.Handle("/me", httpMe)
+	
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request){
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
 
+	
 	mux.HandleFunc("/books", bookHandler.List)
 	mux.HandleFunc("/books/", bookHandler.GetByISBN)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request){
