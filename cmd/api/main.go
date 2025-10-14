@@ -5,73 +5,129 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
+
+	apphttp "bookapi/internal/http"
+	"bookapi/internal/store"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-
-	handler "bookapi/internal/http"
-	"bookapi/internal/store"
 )
 
+func main() {
+	_ = godotenv.Load(".env.local")
 
-func main(){
-	godotenv.Load(".env.local")
-	addr := getEnv("APP_ADDR", ":8080")
-	dsn := getEnv("DB_DSN","postgres://postgres:postgres@localhost:5432/booklibrary")
+	serverAddress := getEnv("APP_ADDR", ":8080")
+	databaseDSN := getEnv("DB_DSN", "postgres://postgres:postgres@localhost:5432/booklibrary")
+	jwtSecret := mustGetEnv("JWT_SECRET")
 
-	ctx := context.Background()
-	dbpool, err := pgxpool.New(ctx, dsn)
+	dbPool := mustOpenDB(databaseDSN)
+	defer dbPool.Close()
 
-	if err != nil{
-		log.Fatalf("Failed to create database pool: %v", err)
-	}
-	log.Println("DB connected")
+	bookRepository := store.NewBookPG(dbPool)
+	userRepository := store.NewUserPG(dbPool)
+	readingListRepository := store.NewReadingListPG(dbPool)
 
-	defer dbpool.Close()
+	bookHandler := apphttp.NewBookHandler(bookRepository)
+	userHandler := apphttp.NewUserHandler(userRepository, jwtSecret)
+	readingListHandler := apphttp.NewReadingListHandler(readingListRepository)
 
-	bookRepo := store.NewBookPG(dbpool)
-	bookHandler := handler.NewBookHandler(bookRepo)
-		userRepo := store.NewUserPG(dbpool)
-	userHandler := handler.NewUserHandler(userRepo, getEnv("JWT_SECRET", "secret"))
+	router := http.NewServeMux()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/users/register", userHandler.RegisterUser)
-	mux.HandleFunc("/users/login", userHandler.LoginUser)
-	httpMe := handler.AuthMiddleware(os.Getenv("JWT_SECRET"))(http.HandlerFunc(userHandler.GetCurrentUser))
-	mux.Handle("/me", httpMe)
-	
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request){
+	router.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
+	})
+	router.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+		defer cancel()
+		if err := dbPool.Ping(ctx); err != nil {
+			http.Error(w, "db not ready", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ready"))
 	})
 
-	
-	mux.HandleFunc("/books", bookHandler.List)
-	mux.HandleFunc("/books/", bookHandler.GetByISBN)
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request){
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Hello, World!"))
+	router.HandleFunc("/books", bookHandler.List)
+	router.HandleFunc("/books/", bookHandler.GetByISBN)
+
+	router.HandleFunc("/users/register", userHandler.RegisterUser)
+	router.HandleFunc("/users/login", userHandler.LoginUser)
+
+	protectedMe := apphttp.AuthMiddleware(jwtSecret)(http.HandlerFunc(userHandler.GetCurrentUser))
+	router.Handle("/me", protectedMe)
+
+	readingListMux := http.NewServeMux()
+	readingListMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			readingListHandler.AddOrUpdateReadingListItem(w, r)
+		case http.MethodGet:
+			readingListHandler.ListReadingListByStatus(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
 	})
-	
-	srv := &http.Server{
-		Addr: addr,
-		Handler: mux,
-		ReadTimeout: 5 * time.Second,
+	protectedReadingLists := apphttp.AuthMiddleware(jwtSecret)(readingListMux)
+	router.Handle("/users/", protectedReadingLists)
+
+	httpServer := &http.Server{
+		Addr:         serverAddress,
+		Handler:      router,
+		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
-		IdleTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
-	log.Printf("Starting server on %s", addr)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatal(err)
+
+	log.Printf("Starting server on %s", serverAddress)
+	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("server error: %v", err)
 	}
 }
 
-func getEnv(key, defaultValue string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		return defaultValue
+func getEnv(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
 	}
-	return value
+	return def
 }
 
+func mustGetEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("missing required environment variable: %s", key)
+	return ""
+}
+
+func mustOpenDB(dsn string) *pgxpool.Pool {
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		log.Fatalf("cannot create db pool: %v", err)
+	}
+	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := pool.Ping(pingCtx); err != nil {
+		pool.Close()
+		log.Fatalf("cannot ping database (%s): %v", redactDSN(dsn), err)
+	}
+	log.Println("database connection OK")
+	return pool
+}
+
+func redactDSN(dsn string) string {
+	const marker = "://"
+	start := strings.Index(dsn, marker)
+	if start < 0 {
+		return dsn
+	}
+	start += len(marker)
+	end := strings.Index(dsn[start:], "@")
+	if end < 0 {
+		return dsn
+	}
+	return dsn[:start] + "***" + dsn[start+end:]
+}

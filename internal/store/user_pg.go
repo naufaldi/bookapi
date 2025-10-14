@@ -21,7 +21,7 @@ func NewUserPG(db * pgxpool.Pool) * UserPG {
 
 func (r * UserPG) Create(ctx context.Context, user * entity.User) error {
 	const query = `
-	INSERT INTO users (id, email, username, password, role)
+	INSERT INTO users (id, email, username, password_hash, role)
 	VALUES (gen_random_uuid(), $1, $2, $3, COALESCE($4, 'USER'))
 	RETURNING id, role, created_at, updated_at
 	`
@@ -30,7 +30,7 @@ func (r * UserPG) Create(ctx context.Context, user * entity.User) error {
 
 func (r * UserPG) GetByEmail(ctx context.Context, email string) (entity.User, error) {
 	const query = `
-	SELECT id, email, username, password, role, created_at, updated_at
+	SELECT id, email, username, password_hash, role, created_at, updated_at
 	FROM users
 	WHERE email = $1
 	LIMIT 1
@@ -48,7 +48,7 @@ func (r * UserPG) GetByEmail(ctx context.Context, email string) (entity.User, er
 
 func (r *UserPG) GetByID(ctx context.Context, id string) (entity.User, error) {
 	const query = `
-	SELECT id, email, username, password, role, created_at, updated_at
+	SELECT id, email, username, password_hash, role, created_at, updated_at
 	FROM users WHERE id  = $1 LIMIT 1
 	`
 	var user entity.User
