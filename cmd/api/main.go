@@ -29,11 +29,15 @@ func main() {
 	userRepository := store.NewUserPG(dbPool)
 	readingListRepository := store.NewReadingListPG(dbPool)
 
+	ratingRepository := store.NewRatingPG(dbPool)
+	ratingHandler := apphttp.NewRatingHandler(ratingRepository)
+
 	bookHandler := apphttp.NewBookHandler(bookRepository)
 	userHandler := apphttp.NewUserHandler(userRepository, jwtSecret)
 	readingListHandler := apphttp.NewReadingListHandler(readingListRepository)
 
 	router := http.NewServeMux()
+	booksSubRouter := http.NewServeMux()
 
 	router.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -50,15 +54,17 @@ func main() {
 		_, _ = w.Write([]byte("ready"))
 	})
 
+	// Public routes - register before protected routes to avoid conflicts
 	router.HandleFunc("/books", bookHandler.List)
-	router.HandleFunc("/books/", bookHandler.GetByISBN)
 
 	router.HandleFunc("/users/register", userHandler.RegisterUser)
 	router.HandleFunc("/users/login", userHandler.LoginUser)
 
+	// Protected route - GET /me
 	protectedMe := apphttp.AuthMiddleware(jwtSecret)(http.HandlerFunc(userHandler.GetCurrentUser))
 	router.Handle("/me", protectedMe)
 
+	// Reading list sub-router for protected /users/* routes
 	readingListMux := http.NewServeMux()
 	readingListMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -71,7 +77,32 @@ func main() {
 		}
 	})
 	protectedReadingLists := apphttp.AuthMiddleware(jwtSecret)(readingListMux)
+
+	// Books sub-router for /books/* routes (includes /books/{isbn}/rating)
+	booksSubRouter.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.Trim(r.URL.Path, "/")
+		if strings.Count(path, "/") == 2 && strings.HasSuffix(path, "/rating") {
+			switch r.Method {
+			case http.MethodPost:
+				apphttp.AuthMiddleware(jwtSecret)(http.HandlerFunc(ratingHandler.CreateRating)).ServeHTTP(w, r)
+			case http.MethodGet:
+				ratingHandler.GetRating(w, r)
+			default:
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			}
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			bookHandler.GetByISBN(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
+
+	// Register protected routes last (more general patterns)
 	router.Handle("/users/", protectedReadingLists)
+	router.Handle("/books/", booksSubRouter)
 
 	httpServer := &http.Server{
 		Addr:         serverAddress,
