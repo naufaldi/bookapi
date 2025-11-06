@@ -19,38 +19,37 @@ func NewReadingListHandler(repo usecase.ReadingListRepository) *ReadingListHandl
 	}
 }
 
-func parseReadingListPath(path string) (userID string, listName string, ok bool){
-	trimmed := strings.Trim(path, "/") 
+func parseReadingListPath(path string) (userID string, listName string, ok bool) {
+	trimmed := strings.Trim(path, "/")
 	parts := strings.Split(trimmed, "/")
-	if len(parts) != 2 {
+	if len(parts) != 3 {
 		return "", "", false
 	}
 	if parts[0] != "users" {
 		return "", "", false
 	}
-	list := strings.ToUpper(parts[2])
+	list := strings.ToUpper(parts[len(parts)-1])
 	switch list {
-		case "WISHLIST", "READING", "FINISHED":
-			return parts[1], list, true
-		default:
-			return "", "", false
+	case "WISHLIST", "READING", "FINISHED":
+		return parts[1], list, true
+	default:
+		return "", "", false
 	}
-	
+
 }
 
 func statusFromListName(listName string) string {
 	switch strings.ToUpper(listName) {
-		case "WISHLIST":
-			return entity.ReadingListStatusWishlist
-		case "READING":
-			return entity.ReadingListStatusReading
-		case "FINISHED":
-			return entity.ReadingListStatusFinished
-		default:
-			return ""
+	case "WISHLIST":
+		return entity.ReadingListStatusWishlist
+	case "READING":
+		return entity.ReadingListStatusReading
+	case "FINISHED":
+		return entity.ReadingListStatusFinished
+	default:
+		return ""
 	}
 }
-
 
 func isSelfOrAdmin(request *http.Request, pathUserId string) bool {
 	authenticatedUserId := UserIDFrom(request)
@@ -67,7 +66,7 @@ func (handler *ReadingListHandler) AddOrUpdateReadingListItem(responseWriter htt
 
 	if !ok {
 		http.NotFound(responseWriter, request)
-		return 
+		return
 	}
 	if !isSelfOrAdmin(request, pathUserID) {
 		http.Error(responseWriter, "forbidden", http.StatusForbidden)
@@ -97,7 +96,7 @@ func (handler *ReadingListHandler) AddOrUpdateReadingListItem(responseWriter htt
 	json.NewEncoder(responseWriter).Encode(map[string]any{"message": "book added to reading list"})
 }
 
-func (handler *ReadingListHandler) ListReadingListByStatus(responseWriter http.ResponseWriter, request *http.Request){
+func (handler *ReadingListHandler) ListReadingListByStatus(responseWriter http.ResponseWriter, request *http.Request) {
 	pathUserID, listName, ok := parseReadingListPath(request.URL.Path)
 	if !ok {
 		http.NotFound(responseWriter, request)
@@ -118,7 +117,7 @@ func (handler *ReadingListHandler) ListReadingListByStatus(responseWriter http.R
 
 	offset := (page - 1) * pageSize
 	status := statusFromListName(listName)
-	items,total, err := handler.readingListRepository.ListReadingListByStatus(request.Context(), pathUserID, status, pageSize, offset)
+	items, total, err := handler.readingListRepository.ListReadingListByStatus(request.Context(), pathUserID, status, pageSize, offset)
 	if err != nil {
 		http.Error(responseWriter, "server error", http.StatusInternalServerError)
 		return

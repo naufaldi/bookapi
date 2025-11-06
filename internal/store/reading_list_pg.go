@@ -41,34 +41,34 @@ func (repo *ReadingListPG) UpsertReadingListItem(ctx context.Context, userID str
 }
 
 // ListReadingListByStatus mengembalikan daftar buku + total untuk pagination.
-func (repo *ReadingListPG) ListReadingListByStatus(ctx context.Context, userID string, status string, limit, offset int) ([]entity.Book, int, error){
+func (repo *ReadingListPG) ListReadingListByStatus(ctx context.Context, userID string, status string, limit, offset int) ([]entity.Book, int, error) {
 	const countSQL = `
-		SELECT COUNT(*) 
+		SELECT COUNT(*)
 		FROM user_books ub
 		JOIN books b on b.id = ub.book_id
 		WHERE ub.user_id = $1 AND ub.status = $2
 	`
-	var total int 
-	if err := repo.db.QueryRow(ctx, countSQL, userID,status).Scan(&total); err != nil{
+	var total int
+	if err := repo.db.QueryRow(ctx, countSQL, userID, status).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	const dataSQL = `
-		SEELCT b.id, b.isbn, b.title, b.genre, b.publisher, COALESCE(b.description, '') as description, b.created_at, b.updated_at
+		SELECT b.id, b.isbn, b.title, b.genre, b.publisher, COALESCE(b.description, '') as description, b.created_at, b.updated_at
 		FROM user_books ub
 		JOIN books b ON b.id = ub.book_id
 		WHERE ub.user_id = $1 AND ub.status = $2
 		ORDER by b.title ASC
-		LIMIT $3 OFFSET $4  
+		LIMIT $3 OFFSET $4
 	`
-	rows, err := repo.db.Query(ctx, dataSQL, userID, status, limit, offset) 
+	rows, err := repo.db.Query(ctx, dataSQL, userID, status, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
 
 	var books []entity.Book
-	for rows.Next(){
+	for rows.Next() {
 		var book entity.Book
 		if err := rows.Scan(
 			&book.ID, &book.ISBN, &book.Title, &book.Genre, &book.Publisher, &book.Description, &book.CreatedAt, &book.UpdatedAt,
@@ -78,16 +78,16 @@ func (repo *ReadingListPG) ListReadingListByStatus(ctx context.Context, userID s
 		books = append(books, book)
 	}
 	if err := rows.Err(); err != nil {
-		return nil,0, err
+		return nil, 0, err
 	}
 	return books, total, nil
 }
 
 func ValidasiReadingListStatus(status string) error {
 	switch status {
-		case entity.ReadingListStatusWishlist, entity.ReadingListStatusReading, entity.ReadingListStatusFinished:
-			return nil
-		default:
+	case entity.ReadingListStatusWishlist, entity.ReadingListStatusReading, entity.ReadingListStatusFinished:
+		return nil
+	default:
 		return fmt.Errorf("invalid status: %s", status)
 	}
 }
