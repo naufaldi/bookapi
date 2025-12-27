@@ -33,13 +33,13 @@ type createRatingRequest struct {
 
 func (handler *RatingHandler) CreateRating( responseWriter http.ResponseWriter, request *http.Request) {
 	isbn, action, ok := parseBookISBNAndAction(request.URL.Path)
-	if !ok || action != 'rating' {
+	if !ok || action != "rating" {
 		http.NotFound(responseWriter, request)
 		return
 	}
 
 	userID := UserIDFrom(request)
-	if userID == ''{
+	if userID == ""{
 	http.Error(http.ResponseWriter, "unauthorized", http.StatusUnauthorized)
 	return
 	}
