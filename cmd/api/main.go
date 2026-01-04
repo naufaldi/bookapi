@@ -15,6 +15,16 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// @title Book API
+// @version 1.0
+// @description Simple Book Tracking API with authentication
+// @host localhost:8080
+// @BasePath /
+// @securityDefinitions.apikey Bearer
+// @in header
+// @name Authorization
+// @description Enter the token with the `Bearer ` prefix
+
 func main() {
 	_ = godotenv.Load(".env.local")
 
@@ -38,6 +48,14 @@ func main() {
 
 	router := http.NewServeMux()
 	booksSubRouter := http.NewServeMux()
+
+	// Swagger UI endpoints
+	router.HandleFunc("/swagger/", func(w http.ResponseWriter, r *http.Request) {
+		http.StripPrefix("/swagger/", http.FileServer(http.Dir("./docs"))).ServeHTTP(w, r)
+	})
+	router.HandleFunc("/swagger", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/swagger/", http.StatusMovedPermanently)
+	})
 
 	router.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

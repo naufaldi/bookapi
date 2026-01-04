@@ -12,23 +12,33 @@ import (
 )
 
 type UserHandler struct {
-	repo usecase.UserRepository
+	repo   usecase.UserRepository
 	secret string
 }
 
 func NewUserHandler(repo usecase.UserRepository, secret string) *UserHandler {
 	return &UserHandler{
-		repo: repo,
+		repo:   repo,
 		secret: secret,
 	}
 }
 
 type registerReq struct {
-	Email string `json:"email"`
+	Email    string `json:"email"`
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
+// @Summary Register new user
+// @Description Create a new user account
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param user body registerReq true "User registration data"
+// @Success 201 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Router /users/register [post]
 func (handler *UserHandler) RegisterUser(responseWriter http.ResponseWriter, request *http.Request) {
 	var registerReq registerReq
 	if err := json.NewDecoder(request.Body).Decode(&registerReq); err != nil {
@@ -37,12 +47,12 @@ func (handler *UserHandler) RegisterUser(responseWriter http.ResponseWriter, req
 	}
 	registerReq.Email = strings.TrimSpace(registerReq.Email)
 	registerReq.Username = strings.TrimSpace(registerReq.Username)
-	
+
 	if registerReq.Email == "" || registerReq.Username == "" || len(registerReq.Password) < 6 {
 		http.Error(responseWriter, "Invalid request", http.StatusBadRequest)
 		return
 	}
-	
+
 	_, err := handler.repo.GetByEmail(request.Context(), registerReq.Email)
 	if err == nil {
 		http.Error(responseWriter, "Email already exists", http.StatusConflict)
@@ -61,10 +71,10 @@ func (handler *UserHandler) RegisterUser(responseWriter http.ResponseWriter, req
 	}
 
 	newUser := &entity.User{
-		Email: registerReq.Email,
+		Email:    registerReq.Email,
 		Username: registerReq.Username,
 		Password: hashedPassword,
-		Role: "USER",
+		Role:     "USER",
 	}
 	if createErr := handler.repo.Create(request.Context(), newUser); createErr != nil {
 		http.Error(responseWriter, "server error", http.StatusInternalServerError)
@@ -82,12 +92,13 @@ func (handler *UserHandler) RegisterUser(responseWriter http.ResponseWriter, req
 		},
 	})
 }
+
 type LoginReq struct {
-	Email string `json:"email"`
+	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
-func (userHandler *UserHandler) LoginUser(responseWriter http.ResponseWriter, request *http.Request){
+func (userHandler *UserHandler) LoginUser(responseWriter http.ResponseWriter, request *http.Request) {
 	var loginReq LoginReq
 	if err := json.NewDecoder(request.Body).Decode(&loginReq); err != nil {
 		http.Error(responseWriter, "bad request", http.StatusBadRequest)
@@ -95,14 +106,13 @@ func (userHandler *UserHandler) LoginUser(responseWriter http.ResponseWriter, re
 	}
 	loginReq.Email = strings.TrimSpace(loginReq.Email)
 
-	
 	if loginReq.Email == "" || len(loginReq.Password) < 6 {
 		http.Error(responseWriter, "Invalid input", http.StatusBadRequest)
 		return
 	}
 
 	foundUser, findErr := userHandler.repo.GetByEmail(request.Context(), loginReq.Email)
-	if findErr != nil || !auth.VerifyPassword(foundUser.Password, loginReq.Password){
+	if findErr != nil || !auth.VerifyPassword(foundUser.Password, loginReq.Password) {
 		http.Error(responseWriter, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -121,7 +131,7 @@ func (userHandler *UserHandler) LoginUser(responseWriter http.ResponseWriter, re
 			"access_token": signedAccessToken,
 		},
 	})
-	
+
 }
 
 func (userHandler *UserHandler) GetCurrentUser(responseWriter http.ResponseWriter, request *http.Request) {
@@ -141,8 +151,8 @@ func (userHandler *UserHandler) GetCurrentUser(responseWriter http.ResponseWrite
 	responseWriter.WriteHeader(http.StatusOK)
 	json.NewEncoder(responseWriter).Encode(map[string]any{
 		"data": map[string]any{
-			"id": user.ID,
-			"email": user.Email,
+			"id":       user.ID,
+			"email":    user.Email,
 			"username": user.Username,
 		},
 	})

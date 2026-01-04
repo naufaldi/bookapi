@@ -6,8 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-
-	"github.com/docker/distribution/registry/handlers"
 )
 
 type RatingHandler struct {
@@ -31,7 +29,7 @@ type createRatingRequest struct {
 	Star int `json:"star"`
 }
 
-func (handler *RatingHandler) CreateRating( responseWriter http.ResponseWriter, request *http.Request) {
+func (handler *RatingHandler) CreateRating(responseWriter http.ResponseWriter, request *http.Request) {
 	isbn, action, ok := parseBookISBNAndAction(request.URL.Path)
 	if !ok || action != "rating" {
 		http.NotFound(responseWriter, request)
@@ -39,9 +37,9 @@ func (handler *RatingHandler) CreateRating( responseWriter http.ResponseWriter, 
 	}
 
 	userID := UserIDFrom(request)
-	if userID == ""{
-	http.Error(http.ResponseWriter, "unauthorized", http.StatusUnauthorized)
-	return
+	if userID == "" {
+		http.Error(responseWriter, "unauthorized", http.StatusUnauthorized)
+		return
 	}
 	var body createRatingRequest
 	if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
@@ -55,49 +53,49 @@ func (handler *RatingHandler) CreateRating( responseWriter http.ResponseWriter, 
 
 	if err := handler.ratingRepo.CreateOrUpdateRating(request.Context(), userID, isbn, body.Star); err != nil {
 		switch {
-			case errors.Is(err, usecase.ErrNotFound):
-				http.Error(responseWriter, "book not found", http.StatusNotFound)
-				return
-			default:
-				http.Error(responseWriter, "internal server error", http.StatusInternalServerError)
-				return
+		case errors.Is(err, usecase.ErrNotFound):
+			http.Error(responseWriter, "book not found", http.StatusNotFound)
+			return
+		default:
+			http.Error(responseWriter, "internal server error", http.StatusInternalServerError)
+			return
 		}
 	}
 	responseWriter.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(responseWriter).Encode(map[string]any{
 		"message": "Rating saved",
 		"data": map[string]any{
-			"isbn": isbn,
+			"isbn":    isbn,
 			"user_id": userID,
-			"star": body.Star,
+			"star":    body.Star,
 		},
 	})
 }
 
-func (handlers *RatingHandler) GetRating(responseWriter http.ResponseWriter, request *http.Request){
+func (handler *RatingHandler) GetRating(responseWriter http.ResponseWriter, request *http.Request) {
 	isbn, action, ok := parseBookISBNAndAction(request.URL.Path)
 	if !ok || action != "rating" {
 		http.NotFound(responseWriter, request)
 		return
 	}
 	var yourRating *int
-	if userID := UserIDFrom(request); userID != ""{
+	if userID := UserIDFrom(request); userID != "" {
 		if star, err := handler.ratingRepo.GetUserRating(request.Context(), userID, isbn); err == nil {
 			yourRating = &star
 		}
 	}
-	average, count, err :=  handler.ratingRepo.GetBookRatingStats(request.Context, isbn)
+	average, count, err := handler.ratingRepo.GetBookRating(request.Context(), isbn)
 	if err != nil {
 		http.Error(responseWriter, "server error", http.StatusInternalServerError)
 		return
 	}
 
 	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]any {
+	json.NewEncoder(responseWriter).Encode(map[string]any{
 		"data": map[string]any{
 			"average_rating": average,
-			"total_ratings": count,
-			"your_rating": yourRating
+			"total_ratings":  count,
+			"your_rating":    yourRating,
 		},
 	})
 }
