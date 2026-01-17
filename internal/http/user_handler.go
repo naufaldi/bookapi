@@ -4,6 +4,9 @@ import (
 	"bookapi/internal/auth"
 	"bookapi/internal/entity"
 	"bookapi/internal/usecase"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,21 +15,23 @@ import (
 )
 
 type UserHandler struct {
-	repo   usecase.UserRepository
-	secret string
+	repo        usecase.UserRepository
+	sessionRepo usecase.SessionRepository
+	secret      string
 }
 
-func NewUserHandler(repo usecase.UserRepository, secret string) *UserHandler {
+func NewUserHandler(repo usecase.UserRepository, sessionRepo usecase.SessionRepository, secret string) *UserHandler {
 	return &UserHandler{
-		repo:   repo,
-		secret: secret,
+		repo:        repo,
+		sessionRepo: sessionRepo,
+		secret:      secret,
 	}
 }
 
 type registerReq struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Email    string `json:"email" validate:"required,email"`
+	Username string `json:"username" validate:"required,min=3,max=50"`
+	Password string `json:"password" validate:"required,password_strength"`
 }
 
 // @Summary Register new user
@@ -48,8 +53,17 @@ func (handler *UserHandler) RegisterUser(responseWriter http.ResponseWriter, req
 	registerReq.Email = strings.TrimSpace(registerReq.Email)
 	registerReq.Username = strings.TrimSpace(registerReq.Username)
 
-	if registerReq.Email == "" || registerReq.Username == "" || len(registerReq.Password) < 6 {
-		http.Error(responseWriter, "Invalid request", http.StatusBadRequest)
+	if validationErrors := ValidateStruct(registerReq); len(validationErrors) > 0 {
+		responseWriter.Header().Set("Content-Type", "application/json")
+		responseWriter.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(responseWriter).Encode(map[string]any{
+			"success": false,
+			"error": map[string]any{
+				"code":    "VALIDATION_ERROR",
+				"message": "Invalid input",
+				"details": validationErrors,
+			},
+		})
 		return
 	}
 
@@ -94,8 +108,9 @@ func (handler *UserHandler) RegisterUser(responseWriter http.ResponseWriter, req
 }
 
 type LoginReq struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email      string `json:"email"`
+	Password   string `json:"password"`
+	RememberMe bool   `json:"remember_me"`
 }
 
 func (userHandler *UserHandler) LoginUser(responseWriter http.ResponseWriter, request *http.Request) {
@@ -117,18 +132,55 @@ func (userHandler *UserHandler) LoginUser(responseWriter http.ResponseWriter, re
 		return
 	}
 
-	const accessTokenTTL = 24 * time.Hour
-	signedAccessToken, signErr := auth.GenerateToken(userHandler.secret, foundUser.ID, foundUser.Role, accessTokenTTL)
+	const accessTokenTTL = 15 * time.Minute
+	refreshTokenTTL := 30 * 24 * time.Hour
+	if loginReq.RememberMe {
+		refreshTokenTTL = 90 * 24 * time.Hour
+	}
 
+	signedAccessToken, _, signErr := auth.GenerateToken(userHandler.secret, foundUser.ID, foundUser.Role, accessTokenTTL)
 	if signErr != nil {
 		http.Error(responseWriter, "server error", http.StatusInternalServerError)
 		return
 	}
+
+	refreshTokenBytes := make([]byte, 32)
+	if _, err := rand.Read(refreshTokenBytes); err != nil {
+		http.Error(responseWriter, "server error", http.StatusInternalServerError)
+		return
+	}
+	refreshToken := hex.EncodeToString(refreshTokenBytes)
+	hash := sha256.Sum256([]byte(refreshToken))
+	tokenHash := hex.EncodeToString(hash[:])
+
+	userAgent := request.Header.Get("User-Agent")
+	ipAddress := request.RemoteAddr
+	if forwarded := request.Header.Get("X-Forwarded-For"); forwarded != "" {
+		ipAddress = strings.Split(forwarded, ",")[0]
+	}
+
+	session := &entity.Session{
+		UserID:          foundUser.ID,
+		RefreshTokenHash: tokenHash,
+		UserAgent:       userAgent,
+		IPAddress:       ipAddress,
+		RememberMe:      loginReq.RememberMe,
+		ExpiresAt:       time.Now().Add(refreshTokenTTL),
+	}
+
+	if err := userHandler.sessionRepo.Create(request.Context(), session); err != nil {
+		http.Error(responseWriter, "server error", http.StatusInternalServerError)
+		return
+	}
+
 	responseWriter.Header().Set("Content-Type", "application/json")
 	responseWriter.WriteHeader(http.StatusOK)
 	json.NewEncoder(responseWriter).Encode(map[string]any{
+		"success": true,
 		"data": map[string]any{
-			"access_token": signedAccessToken,
+			"access_token":  signedAccessToken,
+			"refresh_token": refreshToken,
+			"expires_in":    int(accessTokenTTL.Seconds()),
 		},
 	})
 

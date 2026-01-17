@@ -2,6 +2,7 @@ package http
 
 import (
 	"bookapi/internal/auth"
+	"bookapi/internal/usecase"
 	"context"
 	"net/http"
 	"strings"
@@ -11,7 +12,7 @@ type contextKey string
 const userIDKey contextKey = "userID"
 const roleKey contextKey = "role"
 
-func AuthMiddleware(secret string) func(http.Handler) http.Handler {
+func AuthMiddleware(secret string, blacklistRepo usecase.BlacklistRepository) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 			authHeader := request.Header.Get("Authorization")
@@ -25,6 +26,14 @@ func AuthMiddleware(secret string) func(http.Handler) http.Handler {
 			if err != nil {
 				http.Error(responseWriter, "unauthorized", http.StatusUnauthorized)
 				return
+			}
+
+			if blacklistRepo != nil {
+				isBlacklisted, err := blacklistRepo.IsBlacklisted(request.Context(), claims.ID)
+				if err != nil || isBlacklisted {
+					http.Error(responseWriter, "unauthorized", http.StatusUnauthorized)
+					return
+				}
 			}
 
 			ctx := context.WithValue(request.Context(), userIDKey, claims.Sub)

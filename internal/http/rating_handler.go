@@ -26,7 +26,7 @@ func parseBookISBNAndAction(path string) (isbn, action string, ok bool) {
 }
 
 type createRatingRequest struct {
-	Star int `json:"star"`
+	Star int `json:"star" validate:"required,gte=1,lte=5"`
 }
 
 func (handler *RatingHandler) CreateRating(responseWriter http.ResponseWriter, request *http.Request) {
@@ -43,11 +43,20 @@ func (handler *RatingHandler) CreateRating(responseWriter http.ResponseWriter, r
 	}
 	var body createRatingRequest
 	if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
-		http.Error(responseWriter, "bad request", http.StatusNotFound)
+		http.Error(responseWriter, "bad request", http.StatusBadRequest)
 		return
 	}
-	if body.Star < 1 || body.Star > 5 {
-		http.Error(responseWriter, "rating must be between 1 and 5", http.StatusBadRequest)
+	if validationErrors := ValidateStruct(body); len(validationErrors) > 0 {
+		responseWriter.Header().Set("Content-Type", "application/json")
+		responseWriter.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(responseWriter).Encode(map[string]any{
+			"success": false,
+			"error": map[string]any{
+				"code":    "VALIDATION_ERROR",
+				"message": "Invalid input",
+				"details": validationErrors,
+			},
+		})
 		return
 	}
 

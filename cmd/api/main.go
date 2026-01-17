@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,13 +42,29 @@ func main() {
 	bookRepository := store.NewBookPG(dbPool)
 	userRepository := store.NewUserPG(dbPool)
 	readingListRepository := store.NewReadingListPG(dbPool)
+	sessionRepository := store.NewSessionPG(dbPool)
+	blacklistRepository := store.NewBlacklistPG(dbPool)
 
 	ratingRepository := store.NewRatingPG(dbPool)
 	ratingHandler := apphttp.NewRatingHandler(ratingRepository)
 
 	bookHandler := apphttp.NewBookHandler(bookRepository)
-	userHandler := apphttp.NewUserHandler(userRepository, jwtSecret)
+	userHandler := apphttp.NewUserHandler(userRepository, sessionRepository, jwtSecret)
+	authHandler := apphttp.NewAuthHandler(jwtSecret, sessionRepository, blacklistRepository, userRepository)
+	sessionHandler := apphttp.NewSessionHandler(sessionRepository)
 	readingListHandler := apphttp.NewReadingListHandler(readingListRepository)
+
+	allowedOrigins := []string{"http://localhost:3000", "http://localhost:5173"}
+	if origins := os.Getenv("ALLOWED_ORIGINS"); origins != "" {
+		allowedOrigins = strings.Split(origins, ",")
+	}
+
+	maxRequestSize := int64(1 * 1024 * 1024)
+	if sizeMB := os.Getenv("MAX_REQUEST_SIZE_MB"); sizeMB != "" {
+		if size, err := strconv.ParseInt(sizeMB, 10, 64); err == nil {
+			maxRequestSize = size * 1024 * 1024
+		}
+	}
 
 	router := http.NewServeMux()
 	booksSubRouter := http.NewServeMux()
@@ -75,9 +92,13 @@ func main() {
 
 	router.HandleFunc("/users/register", userHandler.RegisterUser)
 	router.HandleFunc("/users/login", userHandler.LoginUser)
+	
+	protectedLogout := apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(http.HandlerFunc(authHandler.LogoutHandler))
+	router.Handle("/auth/logout", protectedLogout)
+	router.HandleFunc("/auth/refresh", authHandler.RefreshTokenHandler)
 
 	// Protected route - GET /me
-	protectedMe := apphttp.AuthMiddleware(jwtSecret)(http.HandlerFunc(userHandler.GetCurrentUser))
+	protectedMe := apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(http.HandlerFunc(userHandler.GetCurrentUser))
 	router.Handle("/me", protectedMe)
 
 	// Reading list sub-router for protected /users/* routes
@@ -92,7 +113,7 @@ func main() {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	})
-	protectedReadingLists := apphttp.AuthMiddleware(jwtSecret)(readingListMux)
+	protectedReadingLists := apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(readingListMux)
 
 	// Books sub-router for /books/* routes (includes /books/{isbn}/rating)
 	booksSubRouter.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +121,7 @@ func main() {
 		if strings.Count(path, "/") == 2 && strings.HasSuffix(path, "/rating") {
 			switch r.Method {
 			case http.MethodPost:
-				apphttp.AuthMiddleware(jwtSecret)(http.HandlerFunc(ratingHandler.CreateRating)).ServeHTTP(w, r)
+				apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(http.HandlerFunc(ratingHandler.CreateRating)).ServeHTTP(w, r)
 			case http.MethodGet:
 				ratingHandler.GetRating(w, r)
 			default:
@@ -116,13 +137,37 @@ func main() {
 		}
 	})
 
+	// Session management routes
+	sessionMux := http.NewServeMux()
+	sessionMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.Trim(r.URL.Path, "/")
+		parts := strings.Split(path, "/")
+		if len(parts) == 3 && parts[0] == "me" && parts[1] == "sessions" {
+			if r.Method == http.MethodDelete {
+				sessionHandler.DeleteSessionHandler(w, r)
+				return
+			}
+		}
+		if r.Method == http.MethodGet {
+			sessionHandler.ListSessionsHandler(w, r)
+		} else {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
+	protectedSessions := apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(sessionMux)
+	router.Handle("/me/sessions/", protectedSessions)
+
 	// Register protected routes last (more general patterns)
 	router.Handle("/users/", protectedReadingLists)
 	router.Handle("/books/", booksSubRouter)
 
+	handler := apphttp.SecurityHeadersMiddleware(router)
+	handler = apphttp.RequestSizeLimitMiddleware(maxRequestSize)(handler)
+	handler = apphttp.CORSMiddleware(allowedOrigins)(handler)
+
 	httpServer := &http.Server{
 		Addr:         serverAddress,
-		Handler:      router,
+		Handler:      handler,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,

@@ -50,7 +50,7 @@ var TestBook = entity.Book{
 
 // GenerateTestToken generates a JWT token for testing
 func GenerateTestToken(secret, userID, role string) string {
-	token, _ := auth.GenerateToken(secret, userID, role, time.Hour)
+	token, _, _ := auth.GenerateToken(secret, userID, role, time.Hour)
 	return token
 }
 
