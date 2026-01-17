@@ -19,7 +19,7 @@ func NewRatingHandler(ratingRepo usecase.RatingRepository) *RatingHandler {
 func parseBookISBNAndAction(path string) (isbn, action string, ok bool) {
 	trimmed := strings.Trim(path, "/")
 	parts := strings.Split(trimmed, "/")
-	if len(parts) == 3 && parts[0] == "books" {
+	if len(parts) >= 3 && parts[0] == "books" {
 		return parts[1], parts[2], true
 	}
 	return "", "", false
@@ -29,82 +29,91 @@ type createRatingRequest struct {
 	Star int `json:"star" validate:"required,gte=1,lte=5"`
 }
 
-func (handler *RatingHandler) CreateRating(responseWriter http.ResponseWriter, request *http.Request) {
-	isbn, action, ok := parseBookISBNAndAction(request.URL.Path)
+// @Summary Create or update rating
+// @Description Rate a book (1-5 stars)
+// @Tags ratings
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param isbn path string true "Book ISBN"
+// @Param rating body createRatingRequest true "Rating value"
+// @Success 200 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /books/{isbn}/rating [post]
+func (h *RatingHandler) CreateRating(w http.ResponseWriter, r *http.Request) {
+	isbn, action, ok := parseBookISBNAndAction(r.URL.Path)
 	if !ok || action != "rating" {
-		http.NotFound(responseWriter, request)
+		http.NotFound(w, r)
 		return
 	}
 
-	userID := UserIDFrom(request)
+	userID := UserIDFrom(r)
 	if userID == "" {
-		http.Error(responseWriter, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	var body createRatingRequest
-	if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
-		http.Error(responseWriter, "bad request", http.StatusBadRequest)
-		return
-	}
-	if validationErrors := ValidateStruct(body); len(validationErrors) > 0 {
-		responseWriter.Header().Set("Content-Type", "application/json")
-		responseWriter.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(responseWriter).Encode(map[string]any{
-			"success": false,
-			"error": map[string]any{
-				"code":    "VALIDATION_ERROR",
-				"message": "Invalid input",
-				"details": validationErrors,
-			},
-		})
+		JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
 		return
 	}
 
-	if err := handler.ratingRepo.CreateOrUpdateRating(request.Context(), userID, isbn, body.Star); err != nil {
+	var req createRatingRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		JSONError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body", nil)
+		return
+	}
+
+	if validationErrors := ValidateStruct(req); len(validationErrors) > 0 {
+		JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid input", validationErrors)
+		return
+	}
+
+	if err := h.ratingRepo.CreateOrUpdateRating(r.Context(), userID, isbn, req.Star); err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrNotFound):
-			http.Error(responseWriter, "book not found", http.StatusNotFound)
-			return
+			JSONError(w, http.StatusNotFound, "NOT_FOUND", "Book not found", nil)
 		default:
-			http.Error(responseWriter, "internal server error", http.StatusInternalServerError)
-			return
+			JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		}
-	}
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]any{
-		"message": "Rating saved",
-		"data": map[string]any{
-			"isbn":    isbn,
-			"user_id": userID,
-			"star":    body.Star,
-		},
-	})
-}
-
-func (handler *RatingHandler) GetRating(responseWriter http.ResponseWriter, request *http.Request) {
-	isbn, action, ok := parseBookISBNAndAction(request.URL.Path)
-	if !ok || action != "rating" {
-		http.NotFound(responseWriter, request)
 		return
 	}
+
+	JSONSuccess(w, map[string]any{
+		"isbn":    isbn,
+		"user_id": userID,
+		"star":    req.Star,
+	}, map[string]string{"message": "Rating saved"})
+}
+
+// @Summary Get book rating
+// @Description Get average rating and total count for a book
+// @Tags ratings
+// @Produce json
+// @Param isbn path string true "Book ISBN"
+// @Success 200 {object} SuccessResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /books/{isbn}/rating [get]
+func (h *RatingHandler) GetRating(w http.ResponseWriter, r *http.Request) {
+	isbn, action, ok := parseBookISBNAndAction(r.URL.Path)
+	if !ok || action != "rating" {
+		http.NotFound(w, r)
+		return
+	}
+
 	var yourRating *int
-	if userID := UserIDFrom(request); userID != "" {
-		if star, err := handler.ratingRepo.GetUserRating(request.Context(), userID, isbn); err == nil {
+	if userID := UserIDFrom(r); userID != "" {
+		if star, err := h.ratingRepo.GetUserRating(r.Context(), userID, isbn); err == nil {
 			yourRating = &star
 		}
 	}
-	average, count, err := handler.ratingRepo.GetBookRating(request.Context(), isbn)
+
+	average, count, err := h.ratingRepo.GetBookRating(r.Context(), isbn)
 	if err != nil {
-		http.Error(responseWriter, "server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]any{
-		"data": map[string]any{
-			"average_rating": average,
-			"total_ratings":  count,
-			"your_rating":    yourRating,
-		},
-	})
+	JSONSuccess(w, map[string]any{
+		"average_rating": average,
+		"total_ratings":  count,
+		"your_rating":    yourRating,
+	}, nil)
 }

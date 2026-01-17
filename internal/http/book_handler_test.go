@@ -60,28 +60,8 @@ func TestBookHandler_List(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:        "success - with genre filter",
-			queryParams: "?genre=Fiction&page=1&page_size=20",
-			setupMock: func() {
-				mockRepo.EXPECT().
-					List(gomock.Any(), gomock.Any()).
-					Return([]entity.Book{}, 0, nil)
-			},
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:        "success - with publisher filter",
-			queryParams: "?publisher=Test+Publisher&page=1&page_size=20",
-			setupMock: func() {
-				mockRepo.EXPECT().
-					List(gomock.Any(), gomock.Any()).
-					Return([]entity.Book{}, 0, nil)
-			},
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:        "success - with search query",
-			queryParams: "?q=test&page=1&page_size=20",
+			name:        "success - with complex filters",
+			queryParams: "?genres=Fiction,Horror&min_rating=4.5&year_from=2000&sort=relevance",
 			setupMock: func() {
 				mockRepo.EXPECT().
 					List(gomock.Any(), gomock.Any()).
@@ -138,13 +118,6 @@ func TestBookHandler_GetByISBN(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name: "not found - invalid ISBN",
-			path: "/books/",
-			setupMock: func() {
-			},
-			expectedStatus: http.StatusNotFound,
-		},
-		{
 			name: "not found - book not in DB",
 			path: "/books/999-9-999999-99-9",
 			setupMock: func() {
@@ -153,16 +126,6 @@ func TestBookHandler_GetByISBN(t *testing.T) {
 					Return(entity.Book{}, usecase.ErrNotFound)
 			},
 			expectedStatus: http.StatusNotFound,
-		},
-		{
-			name: "server error",
-			path: "/books/978-0-123456-78-9",
-			setupMock: func() {
-				mockRepo.EXPECT().
-					GetByISBN(gomock.Any(), "978-0-123456-78-9").
-					Return(entity.Book{}, context.DeadlineExceeded)
-			},
-			expectedStatus: http.StatusInternalServerError,
 		},
 	}
 

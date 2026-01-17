@@ -78,3 +78,19 @@ func (mr *MockRatingRepositoryMockRecorder) GetUserRating(ctx, userID, isbn inte
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserRating", reflect.TypeOf((*MockRatingRepository)(nil).GetUserRating), ctx, userID, isbn)
 }
+
+// GetUserRatingStats mocks base method.
+func (m *MockRatingRepository) GetUserRatingStats(ctx context.Context, userID string) (float64, int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUserRatingStats", ctx, userID)
+	ret0, _ := ret[0].(float64)
+	ret1, _ := ret[1].(int)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetUserRatingStats indicates an expected call of GetUserRatingStats.
+func (mr *MockRatingRepositoryMockRecorder) GetUserRatingStats(ctx, userID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserRatingStats", reflect.TypeOf((*MockRatingRepository)(nil).GetUserRatingStats), ctx, userID)
+}

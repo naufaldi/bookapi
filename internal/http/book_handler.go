@@ -1,7 +1,6 @@
 package http
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -19,35 +18,70 @@ func NewBookHandler(repo usecase.BookRepository) *BookHandler {
 }
 
 // @Summary List books
-// @Description Get all books with filters and pagination
+// @Description Get all books with advanced filters, full-text search and pagination
 // @Tags books
 // @Accept json
 // @Produce json
-// @Param genre query string false "Filter by genre"
+// @Param genre query string false "Filter by single genre"
+// @Param genres query string false "Filter by multiple genres (comma-separated)"
 // @Param publisher query string false "Filter by publisher"
-// @Param q query string false "Search query"
+// @Param q query string false "Legacy search query (ILIKE)"
+// @Param search query string false "Full-text search query"
+// @Param min_rating query number false "Minimum average rating"
+// @Param year_from query int false "Publication year from"
+// @Param year_to query int false "Publication year to"
+// @Param language query string false "Filter by language code (e.g. en, id)"
+// @Param sort query string false "Sort by (title, created_at, rating, year, relevance)"
+// @Param desc query bool false "Sort in descending order"
 // @Param page query int false "Page number" default(1)
 // @Param page_size query int false "Items per page" default(20)
-// @Success 200 {object} map[string]interface{}
+// @Success 200 {object} SuccessResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /books [get]
 func (h *BookHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	query := r.URL.Query()
+
 	// Build ListParams from query parameters
 	params := usecase.ListParams{
-		Genre:     r.URL.Query().Get("genre"),
-		Publisher: r.URL.Query().Get("publisher"),
-		Q:         r.URL.Query().Get("q"), // search query
-		Sort:      r.URL.Query().Get("sort"),
-		Desc:      r.URL.Query().Get("desc") == "true",
+		Genre:     query.Get("genre"),
+		Publisher: query.Get("publisher"),
+		Q:         query.Get("q"),
+		Search:    query.Get("search"),
+		Sort:      query.Get("sort"),
+		Desc:      query.Get("desc") == "true",
+		Language:  query.Get("language"),
+	}
+
+	if genres := query.Get("genres"); genres != "" {
+		params.Genres = strings.Split(genres, ",")
+	}
+
+	if minRatingStr := query.Get("min_rating"); minRatingStr != "" {
+		if val, err := strconv.ParseFloat(minRatingStr, 64); err == nil {
+			params.MinRating = &val
+		}
+	}
+
+	if yearFromStr := query.Get("year_from"); yearFromStr != "" {
+		if val, err := strconv.Atoi(yearFromStr); err == nil {
+			params.YearFrom = &val
+		}
+	}
+
+	if yearToStr := query.Get("year_to"); yearToStr != "" {
+		if val, err := strconv.Atoi(yearToStr); err == nil {
+			params.YearTo = &val
+		}
 	}
 
 	//pagination
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	page, _ := strconv.Atoi(query.Get("page"))
 	if page < 1 {
 		page = 1
 	}
-	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
+	pageSize, _ := strconv.Atoi(query.Get("page_size"))
 
 	if pageSize <= 0 || pageSize > 100 {
 		pageSize = 20
@@ -57,23 +91,16 @@ func (h *BookHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	books, total, err := h.repo.List(ctx, params)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "server error"})
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
-	resp := map[string]interface{}{
-		"data": books,
-		"meta": map[string]interface{}{
-			"page":        page,
-			"page_size":   pageSize,
-			"total":       total,
-			"total_pages": (total + pageSize - 1) / pageSize, // ceiling division
-		},
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	JSONSuccess(w, books, map[string]interface{}{
+		"page":        page,
+		"page_size":   pageSize,
+		"total":       total,
+		"total_pages": (total + pageSize - 1) / pageSize,
+	})
 }
 
 // @Summary Get book by ISBN
@@ -81,8 +108,8 @@ func (h *BookHandler) List(w http.ResponseWriter, r *http.Request) {
 // @Tags books
 // @Produce json
 // @Param isbn path string true "Book ISBN"
-// @Success 200 {object} map[string]interface{}
-// @Failure 404 {object} map[string]string
+// @Success 200 {object} SuccessResponse
+// @Failure 404 {object} ErrorResponse
 // @Router /books/{isbn} [get]
 func (h *BookHandler) GetByISBN(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -102,19 +129,12 @@ func (h *BookHandler) GetByISBN(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrNotFound):
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{"error": "ISBN not found"})
+			JSONError(w, http.StatusNotFound, "NOT_FOUND", "ISBN not found", nil)
 		default:
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "server error"})
+			JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		}
 		return
 
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"data": book,
-	})
+	JSONSuccess(w, book, nil)
 }

@@ -11,6 +11,7 @@ import (
 
 	apphttp "bookapi/internal/http"
 	"bookapi/internal/store"
+	"bookapi/internal/usecase"
 
 	_ "bookapi/docs"
 
@@ -53,6 +54,9 @@ func main() {
 	authHandler := apphttp.NewAuthHandler(jwtSecret, sessionRepository, blacklistRepository, userRepository)
 	sessionHandler := apphttp.NewSessionHandler(sessionRepository)
 	readingListHandler := apphttp.NewReadingListHandler(readingListRepository)
+
+	profileUsecase := usecase.NewProfileUsecase(userRepository, ratingRepository, readingListRepository)
+	profileHandler := apphttp.NewProfileHandler(profileUsecase)
 
 	allowedOrigins := []string{"http://localhost:3000", "http://localhost:5173"}
 	if origins := os.Getenv("ALLOWED_ORIGINS"); origins != "" {
@@ -101,19 +105,71 @@ func main() {
 	protectedMe := apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(http.HandlerFunc(userHandler.GetCurrentUser))
 	router.Handle("/me", protectedMe)
 
+	// Profile routes
+	router.Handle("/me/profile", apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPatch {
+			profileHandler.UpdateProfile(w, r)
+			return
+		}
+		profileHandler.GetOwnProfile(w, r)
+	})))
+
 	// Reading list sub-router for protected /users/* routes
 	readingListMux := http.NewServeMux()
 	readingListMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodPost:
-			readingListHandler.AddOrUpdateReadingListItem(w, r)
-		case http.MethodGet:
-			readingListHandler.ListReadingListByStatus(w, r)
-		default:
+		path := strings.Trim(r.URL.Path, "/")
+		parts := strings.Split(path, "/")
+		
+		// /users/{id}/profile
+		if len(parts) == 3 && parts[2] == "profile" {
+			if r.Method == http.MethodGet {
+				profileHandler.GetPublicProfile(w, r)
+				return
+			}
+		}
+
+		// Reading list routes
+		if len(parts) == 2 {
+			list := strings.ToUpper(parts[1])
+			if list == "WISHLIST" || list == "READING" || list == "FINISHED" {
+				// Reading list routes need auth
+				apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					switch r.Method {
+					case http.MethodPost:
+						readingListHandler.AddOrUpdateReadingListItem(w, r)
+					case http.MethodGet:
+						readingListHandler.ListReadingListByStatus(w, r)
+					default:
+						w.WriteHeader(http.StatusMethodNotAllowed)
+					}
+				})).ServeHTTP(w, r)
+				return
+			}
+		}
+		
+		http.NotFound(w, r)
+	})
+	router.Handle("/users/", readingListMux)
+
+	// Session management routes
+	sessionMux := http.NewServeMux()
+	sessionMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.Trim(r.URL.Path, "/")
+		parts := strings.Split(path, "/")
+		if len(parts) == 3 && parts[0] == "me" && parts[1] == "sessions" {
+			if r.Method == http.MethodDelete {
+				sessionHandler.DeleteSessionHandler(w, r)
+				return
+			}
+		}
+		if r.Method == http.MethodGet {
+			sessionHandler.ListSessionsHandler(w, r)
+		} else {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	})
-	protectedReadingLists := apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(readingListMux)
+	protectedSessions := apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(sessionMux)
+	router.Handle("/me/sessions/", protectedSessions)
 
 	// Books sub-router for /books/* routes (includes /books/{isbn}/rating)
 	booksSubRouter.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -136,29 +192,6 @@ func main() {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	})
-
-	// Session management routes
-	sessionMux := http.NewServeMux()
-	sessionMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.Trim(r.URL.Path, "/")
-		parts := strings.Split(path, "/")
-		if len(parts) == 3 && parts[0] == "me" && parts[1] == "sessions" {
-			if r.Method == http.MethodDelete {
-				sessionHandler.DeleteSessionHandler(w, r)
-				return
-			}
-		}
-		if r.Method == http.MethodGet {
-			sessionHandler.ListSessionsHandler(w, r)
-		} else {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
-	})
-	protectedSessions := apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(sessionMux)
-	router.Handle("/me/sessions/", protectedSessions)
-
-	// Register protected routes last (more general patterns)
-	router.Handle("/users/", protectedReadingLists)
 	router.Handle("/books/", booksSubRouter)
 
 	handler := apphttp.SecurityHeadersMiddleware(router)

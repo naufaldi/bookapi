@@ -11,9 +11,13 @@ import (
 )
 
 func setupSessionTestDB(t *testing.T) *pgxpool.Pool {
-	db, err := pgxpool.New(context.Background(), "postgres://postgres:postgres@localhost:5432/booklibrary_test")
+	ctx := context.Background()
+	db, err := pgxpool.New(ctx, "postgres://postgres:postgres@localhost:5432/booklibrary_test")
 	if err != nil {
 		t.Skipf("Skipping test: cannot connect to test database: %v", err)
+	}
+	if err := db.Ping(ctx); err != nil {
+		t.Skipf("Skipping test: cannot ping test database: %v", err)
 	}
 	return db
 }

@@ -7,13 +7,19 @@ import (
 
 // object for filter
 type ListParams struct {
-	Genre string
+	Genre     string
+	Genres    []string
 	Publisher string
-	Q string
-	Sort string
-	Desc bool
-	Limit int
-	Offset int
+	Q         string
+	Search    string
+	MinRating *float64
+	YearFrom  *int
+	YearTo    *int
+	Language  string
+	Sort      string
+	Desc      bool
+	Limit     int
+	Offset    int
 }
 
 // Repository interface

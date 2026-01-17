@@ -34,23 +34,31 @@ func hashToken(token string) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// @Summary Logout user
+// @Description Invalidate current access token by adding it to blacklist
+// @Tags auth
+// @Produce json
+// @Security Bearer
+// @Success 204 "No Content"
+// @Failure 401 {object} ErrorResponse
+// @Router /auth/logout [post]
 func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if !strings.HasPrefix(authHeader, "Bearer ") {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
 		return
 	}
 
 	token := strings.TrimPrefix(authHeader, "Bearer ")
 	claims, err := auth.ParseToken(h.secret, token)
 	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
 		return
 	}
 
 	userID := UserIDFrom(r)
 	if userID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
 		return
 	}
 
@@ -60,11 +68,11 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.blacklistRepo.AddToken(r.Context(), claims.ID, userID, expiresAt); err != nil {
-		http.Error(w, "server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	JSONSuccessNoContent(w)
 }
 
 type RefreshTokenRequest struct {
@@ -77,24 +85,25 @@ type RefreshTokenResponse struct {
 	ExpiresIn    int    `json:"expires_in"`
 }
 
+// @Summary Refresh access token
+// @Description Get a new access token using a valid refresh token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param refresh body RefreshTokenRequest true "Refresh token"
+// @Success 200 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Router /auth/refresh [post]
 func (h *AuthHandler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	var req RefreshTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		JSONError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body", nil)
 		return
 	}
 
 	if validationErrors := ValidateStruct(req); len(validationErrors) > 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]any{
-			"success": false,
-			"error": map[string]any{
-				"code":    "VALIDATION_ERROR",
-				"message": "Invalid input",
-				"details": validationErrors,
-			},
-		})
+		JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid input", validationErrors)
 		return
 	}
 
@@ -102,21 +111,21 @@ func (h *AuthHandler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 	session, err := h.sessionRepo.GetByTokenHash(r.Context(), tokenHash)
 	if err != nil {
 		if errors.Is(err, usecase.ErrNotFound) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired refresh token", nil)
 			return
 		}
-		http.Error(w, "server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
 	user, err := h.userRepo.GetByID(r.Context(), session.UserID)
 	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not found", nil)
 		return
 	}
 
 	if err := h.sessionRepo.DeleteByTokenHash(r.Context(), tokenHash); err != nil {
-		http.Error(w, "server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
@@ -128,13 +137,13 @@ func (h *AuthHandler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 
 	accessToken, _, err := auth.GenerateToken(h.secret, user.ID, user.Role, accessTokenTTL)
 	if err != nil {
-		http.Error(w, "server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
 	refreshTokenBytes := make([]byte, 32)
 	if _, err := rand.Read(refreshTokenBytes); err != nil {
-		http.Error(w, "server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 	refreshToken := hex.EncodeToString(refreshTokenBytes)
@@ -145,18 +154,13 @@ func (h *AuthHandler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 	newSession.ExpiresAt = time.Now().Add(refreshTokenTTL)
 	newSession.ID = ""
 	if err := h.sessionRepo.Create(r.Context(), &newSession); err != nil {
-		http.Error(w, "server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
-		"data": RefreshTokenResponse{
-			AccessToken:  accessToken,
-			RefreshToken: refreshToken,
-			ExpiresIn:    int(accessTokenTTL.Seconds()),
-		},
-	})
+	JSONSuccess(w, RefreshTokenResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    int(accessTokenTTL.Seconds()),
+	}, nil)
 }

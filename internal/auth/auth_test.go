@@ -14,7 +14,7 @@ func TestGenerateToken(t *testing.T) {
 	role := "USER"
 	ttl := time.Hour
 
-	token, err := GenerateToken(secret, userID, role, ttl)
+	token, _, err := GenerateToken(secret, userID, role, ttl)
 
 	assert.NoError(t, err)
 	assert.NotEmpty(t, token)
@@ -26,7 +26,7 @@ func TestParseToken(t *testing.T) {
 	role := "USER"
 
 	t.Run("valid token", func(t *testing.T) {
-		token, err := GenerateToken(secret, userID, role, time.Hour)
+		token, _, err := GenerateToken(secret, userID, role, time.Hour)
 		assert.NoError(t, err)
 
 		claims, err := ParseToken(secret, token)
@@ -37,7 +37,7 @@ func TestParseToken(t *testing.T) {
 	})
 
 	t.Run("invalid signature", func(t *testing.T) {
-		token, err := GenerateToken("wrong-secret", userID, role, time.Hour)
+		token, _, err := GenerateToken("wrong-secret", userID, role, time.Hour)
 		assert.NoError(t, err)
 
 		claims, err := ParseToken(secret, token)

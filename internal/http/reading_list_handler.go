@@ -58,81 +58,105 @@ func isSelfOrAdmin(request *http.Request, pathUserId string) bool {
 }
 
 type addReadingListRequest struct {
-	ISBN string `json:"isbn"`
+	ISBN string `json:"isbn" validate:"required,isbn"`
 }
 
-func (handler *ReadingListHandler) AddOrUpdateReadingListItem(responseWriter http.ResponseWriter, request *http.Request) {
-	pathUserID, listName, ok := parseReadingListPath(request.URL.Path)
+// @Summary Add or update reading list item
+// @Description Add a book to a user's reading list (WISHLIST, READING, FINISHED)
+// @Tags reading-lists
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param id path string true "User ID"
+// @Param list path string true "List name (WISHLIST, READING, FINISHED)"
+// @Param item body addReadingListRequest true "Book ISBN"
+// @Success 200 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Router /users/{id}/{list} [post]
+func (h *ReadingListHandler) AddOrUpdateReadingListItem(w http.ResponseWriter, r *http.Request) {
+	pathUserID, listName, ok := parseReadingListPath(r.URL.Path)
 
 	if !ok {
-		http.NotFound(responseWriter, request)
+		http.NotFound(w, r)
 		return
 	}
-	if !isSelfOrAdmin(request, pathUserID) {
-		http.Error(responseWriter, "forbidden", http.StatusForbidden)
+	if !isSelfOrAdmin(r, pathUserID) {
+		JSONError(w, http.StatusForbidden, "FORBIDDEN", "Forbidden", nil)
 		return
 	}
 
 	var input addReadingListRequest
-	if err := json.NewDecoder(request.Body).Decode(&input); err != nil || strings.TrimSpace(input.ISBN) == "" {
-		http.Error(responseWriter, "bad request", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		JSONError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body", nil)
+		return
+	}
+
+	if validationErrors := ValidateStruct(input); len(validationErrors) > 0 {
+		JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid input", validationErrors)
 		return
 	}
 
 	status := statusFromListName(listName)
 	if status == "" {
-		http.Error(responseWriter, "bad request", http.StatusBadRequest)
+		JSONError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid list name", nil)
 		return
 	}
 
-	err := handler.readingListRepository.UpsertReadingListItem(request.Context(), pathUserID, input.ISBN, status)
+	err := h.readingListRepository.UpsertReadingListItem(r.Context(), pathUserID, input.ISBN, status)
 	if err != nil {
-		http.Error(responseWriter, "server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
-	responseWriter.Header().Set("Content-Type", "application/json")
-	responseWriter.WriteHeader(http.StatusOK)
-	json.NewEncoder(responseWriter).Encode(map[string]any{"message": "book added to reading list"})
+	JSONSuccess(w, nil, map[string]string{"message": "Book added to reading list"})
 }
 
-func (handler *ReadingListHandler) ListReadingListByStatus(responseWriter http.ResponseWriter, request *http.Request) {
-	pathUserID, listName, ok := parseReadingListPath(request.URL.Path)
+// @Summary List reading list items
+// @Description Get a user's reading list items by status
+// @Tags reading-lists
+// @Produce json
+// @Security Bearer
+// @Param id path string true "User ID"
+// @Param list path string true "List name (WISHLIST, READING, FINISHED)"
+// @Param page query int false "Page number" default(1)
+// @Param page_size query int false "Items per page" default(20)
+// @Success 200 {object} SuccessResponse
+// @Failure 403 {object} ErrorResponse
+// @Router /users/{id}/{list} [get]
+func (h *ReadingListHandler) ListReadingListByStatus(w http.ResponseWriter, r *http.Request) {
+	pathUserID, listName, ok := parseReadingListPath(r.URL.Path)
 	if !ok {
-		http.NotFound(responseWriter, request)
+		http.NotFound(w, r)
 		return
 	}
-	if !isSelfOrAdmin(request, pathUserID) {
-		http.Error(responseWriter, "forbidden", http.StatusForbidden)
+	if !isSelfOrAdmin(r, pathUserID) {
+		JSONError(w, http.StatusForbidden, "FORBIDDEN", "Forbidden", nil)
 		return
 	}
-	page, _ := strconv.Atoi(request.URL.Query().Get("page"))
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 1 {
 		page = 1
 	}
-	pageSize, _ := strconv.Atoi(request.URL.Query().Get("page_size"))
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
 	if pageSize <= 0 || pageSize > 100 {
 		pageSize = 20
 	}
 
 	offset := (page - 1) * pageSize
 	status := statusFromListName(listName)
-	items, total, err := handler.readingListRepository.ListReadingListByStatus(request.Context(), pathUserID, status, pageSize, offset)
+	items, total, err := h.readingListRepository.ListReadingListByStatus(r.Context(), pathUserID, status, pageSize, offset)
 	if err != nil {
-		http.Error(responseWriter, "server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 	totalPages := (total + pageSize - 1) / pageSize
 
-	responseWriter.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(responseWriter).Encode(map[string]any{
-		"data": items,
-		"meta": map[string]any{
-			"page":        page,
-			"page_size":   pageSize,
-			"total":       total,
-			"total_pages": totalPages,
-			"status":      status,
-		},
+	JSONSuccess(w, items, map[string]interface{}{
+		"page":        page,
+		"page_size":   pageSize,
+		"total":       total,
+		"total_pages": totalPages,
+		"status":      status,
 	})
 }

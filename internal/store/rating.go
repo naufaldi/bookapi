@@ -75,3 +75,20 @@ func (repo *RatingPG) GetBookRating(ctx context.Context, isbn string) (float64, 
 	}
 	return average.Float64, count, nil
 }
+
+func (repo *RatingPG) GetUserRatingStats(ctx context.Context, userID string) (float64, int, error) {
+	query := `
+		SELECT AVG(star)::FLOAT, COUNT(star)
+		FROM ratings
+		WHERE user_id = $1
+	`
+	var average sql.NullFloat64
+	var count int
+	if err := repo.db.QueryRow(ctx, query, userID).Scan(&average, &count); err != nil {
+		return 0, 0, err
+	}
+	if !average.Valid {
+		return 0, 0, nil
+	}
+	return average.Float64, count, nil
+}

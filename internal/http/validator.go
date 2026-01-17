@@ -47,18 +47,13 @@ func validatePasswordStrength(fl validator.FieldLevel) bool {
 	return hasUpper && hasLower && hasNumber && hasSpecial
 }
 
-type ValidationError struct {
-	Field   string `json:"field"`
-	Message string `json:"message"`
-}
-
-func ValidateStruct(s interface{}) []ValidationError {
+func ValidateStruct(s interface{}) []ErrorDetail {
 	err := validate.Struct(s)
 	if err == nil {
 		return nil
 	}
 
-	var errors []ValidationError
+	var errors []ErrorDetail
 	for _, err := range err.(validator.ValidationErrors) {
 		field := err.Field()
 		tag := err.Tag()
@@ -85,7 +80,7 @@ func ValidateStruct(s interface{}) []ValidationError {
 		}
 
 		fieldName := strings.ToLower(field[:1]) + field[1:]
-		errors = append(errors, ValidationError{
+		errors = append(errors, ErrorDetail{
 			Field:   fieldName,
 			Message: message,
 		})

@@ -40,172 +40,168 @@ type registerReq struct {
 // @Accept json
 // @Produce json
 // @Param user body registerReq true "User registration data"
-// @Success 201 {object} map[string]interface{}
-// @Failure 400 {object} map[string]string
-// @Failure 409 {object} map[string]string
+// @Success 201 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
 // @Router /users/register [post]
-func (handler *UserHandler) RegisterUser(responseWriter http.ResponseWriter, request *http.Request) {
-	var registerReq registerReq
-	if err := json.NewDecoder(request.Body).Decode(&registerReq); err != nil {
-		http.Error(responseWriter, "bad request", http.StatusBadRequest)
+func (handler *UserHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
+	var req registerReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		JSONError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body", nil)
 		return
 	}
-	registerReq.Email = strings.TrimSpace(registerReq.Email)
-	registerReq.Username = strings.TrimSpace(registerReq.Username)
+	req.Email = strings.TrimSpace(req.Email)
+	req.Username = strings.TrimSpace(req.Username)
 
-	if validationErrors := ValidateStruct(registerReq); len(validationErrors) > 0 {
-		responseWriter.Header().Set("Content-Type", "application/json")
-		responseWriter.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(responseWriter).Encode(map[string]any{
-			"success": false,
-			"error": map[string]any{
-				"code":    "VALIDATION_ERROR",
-				"message": "Invalid input",
-				"details": validationErrors,
-			},
-		})
+	if validationErrors := ValidateStruct(req); len(validationErrors) > 0 {
+		JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid input", validationErrors)
 		return
 	}
 
-	_, err := handler.repo.GetByEmail(request.Context(), registerReq.Email)
+	_, err := handler.repo.GetByEmail(r.Context(), req.Email)
 	if err == nil {
-		http.Error(responseWriter, "Email already exists", http.StatusConflict)
+		JSONError(w, http.StatusConflict, "ALREADY_EXISTS", "Email already exists", nil)
 		return
 	}
 
 	if !errors.Is(err, usecase.ErrNotFound) {
-		http.Error(responseWriter, "Internal server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
-	hashedPassword, hashErr := auth.HashPassword(registerReq.Password)
-	if hashErr != nil {
-		http.Error(responseWriter, "server error", http.StatusInternalServerError)
+	hashedPassword, err := auth.HashPassword(req.Password)
+	if err != nil {
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
 	newUser := &entity.User{
-		Email:    registerReq.Email,
-		Username: registerReq.Username,
+		Email:    req.Email,
+		Username: req.Username,
 		Password: hashedPassword,
 		Role:     "USER",
 	}
-	if createErr := handler.repo.Create(request.Context(), newUser); createErr != nil {
-		http.Error(responseWriter, "server error", http.StatusInternalServerError)
+	if err := handler.repo.Create(r.Context(), newUser); err != nil {
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
-	responseWriter.Header().Set("Content-Type", "application/json")
-	responseWriter.WriteHeader(http.StatusCreated)
-	json.NewEncoder(responseWriter).Encode(map[string]any{
-		"data": map[string]any{
-			"id":       newUser.ID,
-			"email":    newUser.Email,
-			"username": newUser.Username,
-			"role":     newUser.Role,
-		},
+	JSONSuccessCreated(w, map[string]any{
+		"id":       newUser.ID,
+		"email":    newUser.Email,
+		"username": newUser.Username,
+		"role":     newUser.Role,
 	})
 }
 
 type LoginReq struct {
-	Email      string `json:"email"`
-	Password   string `json:"password"`
+	Email      string `json:"email" validate:"required,email"`
+	Password   string `json:"password" validate:"required"`
 	RememberMe bool   `json:"remember_me"`
 }
 
-func (userHandler *UserHandler) LoginUser(responseWriter http.ResponseWriter, request *http.Request) {
-	var loginReq LoginReq
-	if err := json.NewDecoder(request.Body).Decode(&loginReq); err != nil {
-		http.Error(responseWriter, "bad request", http.StatusBadRequest)
+// @Summary Login user
+// @Description Authenticate user and create session
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param login body LoginReq true "Login credentials"
+// @Success 200 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Router /users/login [post]
+func (h *UserHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
+	var req LoginReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		JSONError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body", nil)
 		return
 	}
-	loginReq.Email = strings.TrimSpace(loginReq.Email)
+	req.Email = strings.TrimSpace(req.Email)
 
-	if loginReq.Email == "" || len(loginReq.Password) < 6 {
-		http.Error(responseWriter, "Invalid input", http.StatusBadRequest)
+	if validationErrors := ValidateStruct(req); len(validationErrors) > 0 {
+		JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid input", validationErrors)
 		return
 	}
 
-	foundUser, findErr := userHandler.repo.GetByEmail(request.Context(), loginReq.Email)
-	if findErr != nil || !auth.VerifyPassword(foundUser.Password, loginReq.Password) {
-		http.Error(responseWriter, "unauthorized", http.StatusUnauthorized)
+	user, err := h.repo.GetByEmail(r.Context(), req.Email)
+	if err != nil || !auth.VerifyPassword(user.Password, req.Password) {
+		JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid email or password", nil)
 		return
 	}
 
 	const accessTokenTTL = 15 * time.Minute
 	refreshTokenTTL := 30 * 24 * time.Hour
-	if loginReq.RememberMe {
+	if req.RememberMe {
 		refreshTokenTTL = 90 * 24 * time.Hour
 	}
 
-	signedAccessToken, _, signErr := auth.GenerateToken(userHandler.secret, foundUser.ID, foundUser.Role, accessTokenTTL)
-	if signErr != nil {
-		http.Error(responseWriter, "server error", http.StatusInternalServerError)
+	signedAccessToken, _, err := auth.GenerateToken(h.secret, user.ID, user.Role, accessTokenTTL)
+	if err != nil {
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
 	refreshTokenBytes := make([]byte, 32)
 	if _, err := rand.Read(refreshTokenBytes); err != nil {
-		http.Error(responseWriter, "server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 	refreshToken := hex.EncodeToString(refreshTokenBytes)
 	hash := sha256.Sum256([]byte(refreshToken))
 	tokenHash := hex.EncodeToString(hash[:])
 
-	userAgent := request.Header.Get("User-Agent")
-	ipAddress := request.RemoteAddr
-	if forwarded := request.Header.Get("X-Forwarded-For"); forwarded != "" {
+	userAgent := r.Header.Get("User-Agent")
+	ipAddress := r.RemoteAddr
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
 		ipAddress = strings.Split(forwarded, ",")[0]
 	}
 
 	session := &entity.Session{
-		UserID:          foundUser.ID,
+		UserID:          user.ID,
 		RefreshTokenHash: tokenHash,
 		UserAgent:       userAgent,
 		IPAddress:       ipAddress,
-		RememberMe:      loginReq.RememberMe,
+		RememberMe:      req.RememberMe,
 		ExpiresAt:       time.Now().Add(refreshTokenTTL),
 	}
 
-	if err := userHandler.sessionRepo.Create(request.Context(), session); err != nil {
-		http.Error(responseWriter, "server error", http.StatusInternalServerError)
+	if err := h.sessionRepo.Create(r.Context(), session); err != nil {
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
-	responseWriter.Header().Set("Content-Type", "application/json")
-	responseWriter.WriteHeader(http.StatusOK)
-	json.NewEncoder(responseWriter).Encode(map[string]any{
-		"success": true,
-		"data": map[string]any{
-			"access_token":  signedAccessToken,
-			"refresh_token": refreshToken,
-			"expires_in":    int(accessTokenTTL.Seconds()),
-		},
-	})
-
+	JSONSuccess(w, map[string]any{
+		"access_token":  signedAccessToken,
+		"refresh_token": refreshToken,
+		"expires_in":    int(accessTokenTTL.Seconds()),
+	}, nil)
 }
 
-func (userHandler *UserHandler) GetCurrentUser(responseWriter http.ResponseWriter, request *http.Request) {
-	userID := UserIDFrom(request)
+// @Summary Get current user
+// @Description Get currently authenticated user details
+// @Tags users
+// @Produce json
+// @Security Bearer
+// @Success 200 {object} SuccessResponse
+// @Failure 401 {object} ErrorResponse
+// @Router /me [get]
+func (h *UserHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFrom(r)
 	if userID == "" {
-		http.Error(responseWriter, "unauthorized", http.StatusUnauthorized)
+		JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
 		return
 	}
 
-	user, err := userHandler.repo.GetByID(request.Context(), userID)
+	user, err := h.repo.GetByID(r.Context(), userID)
 	if err != nil {
-		http.Error(responseWriter, "unauthorized", http.StatusUnauthorized)
+		JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
 		return
 	}
 
-	responseWriter.Header().Set("Content-Type", "application/json")
-	responseWriter.WriteHeader(http.StatusOK)
-	json.NewEncoder(responseWriter).Encode(map[string]any{
-		"data": map[string]any{
-			"id":       user.ID,
-			"email":    user.Email,
-			"username": user.Username,
-		},
-	})
+	JSONSuccess(w, map[string]any{
+		"id":       user.ID,
+		"email":    user.Email,
+		"username": user.Username,
+		"role":     user.Role,
+	}, nil)
 }

@@ -2,7 +2,6 @@ package http
 
 import (
 	"bookapi/internal/usecase"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -25,16 +24,24 @@ type SessionResponse struct {
 	IsCurrent  bool   `json:"is_current"`
 }
 
+// @Summary List user sessions
+// @Description Get all active sessions for the currently authenticated user
+// @Tags sessions
+// @Produce json
+// @Security Bearer
+// @Success 200 {object} SuccessResponse
+// @Failure 401 {object} ErrorResponse
+// @Router /me/sessions [get]
 func (h *SessionHandler) ListSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	userID := UserIDFrom(r)
 	if userID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
 		return
 	}
 
 	sessions, err := h.sessionRepo.ListByUserID(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
@@ -56,25 +63,29 @@ func (h *SessionHandler) ListSessionsHandler(w http.ResponseWriter, r *http.Requ
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]any{
-		"success": true,
-		"data":    response,
-	})
+	JSONSuccess(w, response, nil)
 }
 
+// @Summary Delete session
+// @Description Invalidate a specific session by ID
+// @Tags sessions
+// @Security Bearer
+// @Param id path string true "Session ID"
+// @Success 204 "No Content"
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /me/sessions/{id} [delete]
 func (h *SessionHandler) DeleteSessionHandler(w http.ResponseWriter, r *http.Request) {
 	userID := UserIDFrom(r)
 	if userID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
 		return
 	}
 
 	path := strings.Trim(r.URL.Path, "/")
 	parts := strings.Split(path, "/")
 	if len(parts) < 3 || parts[0] != "me" || parts[1] != "sessions" {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		JSONError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid path", nil)
 		return
 	}
 
@@ -82,7 +93,7 @@ func (h *SessionHandler) DeleteSessionHandler(w http.ResponseWriter, r *http.Req
 
 	sessions, err := h.sessionRepo.ListByUserID(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
@@ -95,18 +106,18 @@ func (h *SessionHandler) DeleteSessionHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	if !found {
-		http.Error(w, "not found", http.StatusNotFound)
+		JSONError(w, http.StatusNotFound, "NOT_FOUND", "Session not found", nil)
 		return
 	}
 
 	if err := h.sessionRepo.Delete(r.Context(), sessionID); err != nil {
 		if errors.Is(err, usecase.ErrNotFound) {
-			http.Error(w, "not found", http.StatusNotFound)
+			JSONError(w, http.StatusNotFound, "NOT_FOUND", "Session not found", nil)
 			return
 		}
-		http.Error(w, "server error", http.StatusInternalServerError)
+		JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	JSONSuccessNoContent(w)
 }

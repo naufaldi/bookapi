@@ -32,7 +32,8 @@ func TestUserHandler_RegisterUser(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockRepo := mocks.NewMockUserRepository(ctrl)
-	handler := NewUserHandler(mockRepo, "test-secret")
+	mockSessionRepo := mocks.NewMockSessionRepository(ctrl)
+	handler := NewUserHandler(mockRepo, mockSessionRepo, "test-secret")
 
 	tests := []struct {
 		name           string
@@ -45,7 +46,7 @@ func TestUserHandler_RegisterUser(t *testing.T) {
 			body: map[string]string{
 				"email":    "new@example.com",
 				"username": "newuser",
-				"password": "password123",
+				"password": "Password123!",
 			},
 			setupMock: func() {
 				mockRepo.EXPECT().
@@ -67,13 +68,13 @@ func TestUserHandler_RegisterUser(t *testing.T) {
 			name: "bad request - missing email",
 			body: map[string]string{
 				"username": "newuser",
-				"password": "password123",
+				"password": "Password123!",
 			},
 			setupMock:      func() {},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name: "bad request - password too short",
+			name: "bad request - password too weak",
 			body: map[string]string{
 				"email":    "new@example.com",
 				"username": "newuser",
@@ -87,7 +88,7 @@ func TestUserHandler_RegisterUser(t *testing.T) {
 			body: map[string]string{
 				"email":    "existing@example.com",
 				"username": "newuser",
-				"password": "password123",
+				"password": "Password123!",
 			},
 			setupMock: func() {
 				mockRepo.EXPECT().
@@ -121,12 +122,13 @@ func TestUserHandler_LoginUser(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockRepo := mocks.NewMockUserRepository(ctrl)
-	handler := NewUserHandler(mockRepo, "test-secret")
+	mockSessionRepo := mocks.NewMockSessionRepository(ctrl)
+	handler := NewUserHandler(mockRepo, mockSessionRepo, "test-secret")
 
 	tests := []struct {
 		name           string
 		body           interface{}
-		setupMock      func() *auth.Claims
+		setupMock      func()
 		expectedStatus int
 	}{
 		{
@@ -135,24 +137,23 @@ func TestUserHandler_LoginUser(t *testing.T) {
 				"email":    "test@example.com",
 				"password": "password123",
 			},
-			setupMock: func() *auth.Claims {
+			setupMock: func() {
 				hashedPassword, _ := auth.HashPassword("password123")
 				user := TestUser
 				user.Password = hashedPassword
 				mockRepo.EXPECT().
 					GetByEmail(gomock.Any(), "test@example.com").
 					Return(user, nil)
-				return &auth.Claims{
-					Sub:  TestUser.ID,
-					Role: TestUser.Role,
-				}
+				mockSessionRepo.EXPECT().
+					Create(gomock.Any(), gomock.Any()).
+					Return(nil)
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name:           "bad request - invalid JSON",
 			body:           "invalid json",
-			setupMock:      func() *auth.Claims { return nil },
+			setupMock:      func() {},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -161,7 +162,7 @@ func TestUserHandler_LoginUser(t *testing.T) {
 				"email":    "",
 				"password": "password123",
 			},
-			setupMock:      func() *auth.Claims { return nil },
+			setupMock:      func() {},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -170,11 +171,10 @@ func TestUserHandler_LoginUser(t *testing.T) {
 				"email":    "notfound@example.com",
 				"password": "password123",
 			},
-			setupMock: func() *auth.Claims {
+			setupMock: func() {
 				mockRepo.EXPECT().
 					GetByEmail(gomock.Any(), "notfound@example.com").
 					Return(entity.User{}, usecase.ErrNotFound)
-				return nil
 			},
 			expectedStatus: http.StatusUnauthorized,
 		},
@@ -184,14 +184,13 @@ func TestUserHandler_LoginUser(t *testing.T) {
 				"email":    "test@example.com",
 				"password": "wrongpassword",
 			},
-			setupMock: func() *auth.Claims {
+			setupMock: func() {
 				hashedPassword, _ := auth.HashPassword("password123")
 				user := TestUser
 				user.Password = hashedPassword
 				mockRepo.EXPECT().
 					GetByEmail(gomock.Any(), "test@example.com").
 					Return(user, nil)
-				return nil
 			},
 			expectedStatus: http.StatusUnauthorized,
 		},
@@ -223,36 +222,30 @@ func TestUserHandler_GetCurrentUser(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockRepo := mocks.NewMockUserRepository(ctrl)
-	handler := NewUserHandler(mockRepo, "test-secret")
+	mockSessionRepo := mocks.NewMockSessionRepository(ctrl)
+	handler := NewUserHandler(mockRepo, mockSessionRepo, "test-secret")
 
 	tests := []struct {
 		name           string
-		setupMock      func() (string, context.Context)
+		setupMock      func() context.Context
 		expectedStatus int
 	}{
 		{
 			name: "success - authenticated user",
-			setupMock: func() (string, context.Context) {
+			setupMock: func() context.Context {
 				mockRepo.EXPECT().
 					GetByID(gomock.Any(), TestUser.ID).
 					Return(TestUser, nil)
 				ctx := context.WithValue(context.Background(), userIDKey, TestUser.ID)
 				ctx = context.WithValue(ctx, roleKey, TestUser.Role)
-				return TestUser.ID, ctx
+				return ctx
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
 			name: "unauthorized - missing token",
-			setupMock: func() (string, context.Context) {
-				return "", context.Background()
-			},
-			expectedStatus: http.StatusUnauthorized,
-		},
-		{
-			name: "unauthorized - invalid token",
-			setupMock: func() (string, context.Context) {
-				return "invalid-user-id", context.Background()
+			setupMock: func() context.Context {
+				return context.Background()
 			},
 			expectedStatus: http.StatusUnauthorized,
 		},
@@ -260,7 +253,7 @@ func TestUserHandler_GetCurrentUser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, ctx := tt.setupMock()
+			ctx := tt.setupMock()
 
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodGet, "/me", nil).WithContext(ctx)
