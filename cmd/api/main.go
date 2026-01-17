@@ -11,8 +11,11 @@ import (
 	apphttp "bookapi/internal/http"
 	"bookapi/internal/store"
 
+	_ "bookapi/docs"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 // @title Book API
@@ -49,13 +52,8 @@ func main() {
 	router := http.NewServeMux()
 	booksSubRouter := http.NewServeMux()
 
-	// Swagger UI endpoints
-	router.HandleFunc("/swagger/", func(w http.ResponseWriter, r *http.Request) {
-		http.StripPrefix("/swagger/", http.FileServer(http.Dir("./docs"))).ServeHTTP(w, r)
-	})
-	router.HandleFunc("/swagger", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/swagger/", http.StatusMovedPermanently)
-	})
+	// Swagger UI endpoint
+	router.HandleFunc("/swagger/", httpSwagger.WrapHandler)
 
 	router.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
