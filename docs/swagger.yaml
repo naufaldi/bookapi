@@ -1,31 +1,31 @@
 basePath: /
 definitions:
-  internal_http.ErrorDetail:
+  http.ErrorDetail:
     properties:
       field:
         type: string
       message:
         type: string
     type: object
-  internal_http.ErrorResponse:
+  http.ErrorResponse:
     properties:
       error:
-        $ref: '#/definitions/internal_http.ErrorResponseBody'
+        $ref: '#/definitions/http.ErrorResponseBody'
       success:
         type: boolean
     type: object
-  internal_http.ErrorResponseBody:
+  http.ErrorResponseBody:
     properties:
       code:
         type: string
       details:
         items:
-          $ref: '#/definitions/internal_http.ErrorDetail'
+          $ref: '#/definitions/http.ErrorDetail'
         type: array
       message:
         type: string
     type: object
-  internal_http.LoginReq:
+  http.LoginReq:
     properties:
       email:
         type: string
@@ -37,28 +37,28 @@ definitions:
     - email
     - password
     type: object
-  internal_http.RefreshTokenRequest:
+  http.RefreshTokenRequest:
     properties:
       refresh_token:
         type: string
     required:
     - refresh_token
     type: object
-  internal_http.SuccessResponse:
+  http.SuccessResponse:
     properties:
       data: {}
       meta: {}
       success:
         type: boolean
     type: object
-  internal_http.addReadingListRequest:
+  http.addReadingListRequest:
     properties:
       isbn:
         type: string
     required:
     - isbn
     type: object
-  internal_http.createRatingRequest:
+  http.createRatingRequest:
     properties:
       star:
         maximum: 5
@@ -67,7 +67,7 @@ definitions:
     required:
     - star
     type: object
-  internal_http.registerReq:
+  http.registerReq:
     properties:
       email:
         type: string
@@ -100,7 +100,7 @@ paths:
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
       security:
       - Bearer: []
       summary: Logout user
@@ -117,22 +117,22 @@ paths:
         name: refresh
         required: true
         schema:
-          $ref: '#/definitions/internal_http.RefreshTokenRequest'
+          $ref: '#/definitions/http.RefreshTokenRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_http.SuccessResponse'
+            $ref: '#/definitions/http.SuccessResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
       summary: Refresh access token
       tags:
       - auth
@@ -202,11 +202,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_http.SuccessResponse'
+            $ref: '#/definitions/http.SuccessResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
       summary: List books
       tags:
       - books
@@ -225,11 +225,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_http.SuccessResponse'
+            $ref: '#/definitions/http.SuccessResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
       summary: Get book by ISBN
       tags:
       - books
@@ -248,11 +248,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_http.SuccessResponse'
+            $ref: '#/definitions/http.SuccessResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
       summary: Get book rating
       tags:
       - ratings
@@ -271,26 +271,26 @@ paths:
         name: rating
         required: true
         schema:
-          $ref: '#/definitions/internal_http.createRatingRequest'
+          $ref: '#/definitions/http.createRatingRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_http.SuccessResponse'
+            $ref: '#/definitions/http.SuccessResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
       security:
       - Bearer: []
       summary: Create or update rating
@@ -305,14 +305,72 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_http.SuccessResponse'
+            $ref: '#/definitions/http.SuccessResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
       security:
       - Bearer: []
       summary: Get current user
+      tags:
+      - users
+  /me/profile:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the authenticated user's complete profile and statistics
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Get own profile
+      tags:
+      - users
+    patch:
+      consumes:
+      - application/json
+      description: Update the authenticated user's profile information
+      parameters:
+      - description: Profile updates (username, bio, location, website, reading_preferences,
+          is_public)
+        in: body
+        name: updates
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Update profile
       tags:
       - users
   /me/sessions:
@@ -324,11 +382,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_http.SuccessResponse'
+            $ref: '#/definitions/http.SuccessResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
       security:
       - Bearer: []
       summary: List user sessions
@@ -349,11 +407,11 @@ paths:
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
       security:
       - Bearer: []
       summary: Delete session
@@ -389,11 +447,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_http.SuccessResponse'
+            $ref: '#/definitions/http.SuccessResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
       security:
       - Bearer: []
       summary: List reading list items
@@ -419,27 +477,56 @@ paths:
         name: item
         required: true
         schema:
-          $ref: '#/definitions/internal_http.addReadingListRequest'
+          $ref: '#/definitions/http.addReadingListRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_http.SuccessResponse'
+            $ref: '#/definitions/http.SuccessResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
       security:
       - Bearer: []
       summary: Add or update reading list item
       tags:
       - reading-lists
+  /users/{id}/profile:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve public profile of another user by their ID
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/http.ErrorResponse'
+      summary: Get public profile
+      tags:
+      - users
   /users/login:
     post:
       consumes:
@@ -451,22 +538,22 @@ paths:
         name: login
         required: true
         schema:
-          $ref: '#/definitions/internal_http.LoginReq'
+          $ref: '#/definitions/http.LoginReq'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_http.SuccessResponse'
+            $ref: '#/definitions/http.SuccessResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
       summary: Login user
       tags:
       - users
@@ -481,22 +568,22 @@ paths:
         name: user
         required: true
         schema:
-          $ref: '#/definitions/internal_http.registerReq'
+          $ref: '#/definitions/http.registerReq'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/internal_http.SuccessResponse'
+            $ref: '#/definitions/http.SuccessResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/internal_http.ErrorResponse'
+            $ref: '#/definitions/http.ErrorResponse'
       summary: Register new user
       tags:
       - users

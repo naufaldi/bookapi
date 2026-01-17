@@ -16,6 +16,16 @@ func NewProfileHandler(usecase *usecase.ProfileUsecase) *ProfileHandler {
 	return &ProfileHandler{usecase: usecase}
 }
 
+// @Summary Get own profile
+// @Description Retrieve the authenticated user's complete profile and statistics
+// @Tags users
+// @Accept json
+// @Produce json
+// @Success 200 {object} SuccessResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Security Bearer
+// @Router /me/profile [get]
 func (h *ProfileHandler) GetOwnProfile(w http.ResponseWriter, r *http.Request) {
 	userID := UserIDFrom(r)
 	if userID == "" {
@@ -36,6 +46,16 @@ func (h *ProfileHandler) GetOwnProfile(w http.ResponseWriter, r *http.Request) {
 	JSONSuccess(w, profile, nil)
 }
 
+// @Summary Get public profile
+// @Description Retrieve public profile of another user by their ID
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Success 200 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /users/{id}/profile [get]
 func (h *ProfileHandler) GetPublicProfile(w http.ResponseWriter, r *http.Request) {
 	// Expected path: /users/{id}/profile
 	path := strings.Trim(r.URL.Path, "/")
@@ -59,6 +79,17 @@ func (h *ProfileHandler) GetPublicProfile(w http.ResponseWriter, r *http.Request
 	JSONSuccess(w, profile, nil)
 }
 
+// @Summary Update profile
+// @Description Update the authenticated user's profile information
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param updates body map[string]interface{} true "Profile updates (username, bio, location, website, reading_preferences, is_public)"
+// @Success 200 {object} SuccessResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Security Bearer
+// @Router /me/profile [patch]
 func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	userID := UserIDFrom(r)
 	if userID == "" {
