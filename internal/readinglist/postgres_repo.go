@@ -1,0 +1,80 @@
+package readinglist
+
+import (
+	"bookapi/internal/book"
+	"context"
+	"errors"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+var ErrNotFound = errors.New("not found")
+
+type PostgresRepo struct {
+	db *pgxpool.Pool
+}
+
+func NewPostgresRepo(db *pgxpool.Pool) *PostgresRepo {
+	return &PostgresRepo{db: db}
+}
+
+func (r *PostgresRepo) UpsertReadingListItem(ctx context.Context, userID string, isbn string, status string) error {
+	const upsertSQL = `
+		INSERT INTO user_books (user_id, book_id, status, created_at, updated_at)
+		SELECT $1, $2, $3, NOW(), NOW()
+		FROM books b
+		WHERE b.isbn = $2
+		ON CONFLICT (user_id, book_id)
+		DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
+	`
+	commandTag, err := r.db.Exec(ctx, upsertSQL, userID, isbn, status)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *PostgresRepo) ListReadingListByStatus(ctx context.Context, userID string, status string, limit, offset int) ([]book.Book, int, error) {
+	const countSQL = `
+		SELECT COUNT(*)
+		FROM user_books ub
+		JOIN books b ON b.id = ub.book_id
+		WHERE ub.user_id = $1 AND ub.status = $2
+	`
+	var total int
+	if err := r.db.QueryRow(ctx, countSQL, userID, status).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	const dataSQL = `
+		SELECT b.id, b.isbn, b.title, b.genre, b.publisher, COALESCE(b.description, '') as description, 
+		       b.publication_year, b.page_count, b.language, b.cover_url, b.created_at, b.updated_at
+		FROM user_books ub
+		JOIN books b ON b.id = ub.book_id
+		WHERE ub.user_id = $1 AND ub.status = $2
+		ORDER BY b.title ASC
+		LIMIT $3 OFFSET $4
+	`
+	rows, err := r.db.Query(ctx, dataSQL, userID, status, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var books []book.Book
+	for rows.Next() {
+		var b book.Book
+		if err := rows.Scan(
+			&b.ID, &b.ISBN, &b.Title, &b.Genre, &b.Publisher, &b.Description,
+			&b.PublicationYear, &b.PageCount, &b.Language, &b.CoverURL,
+			&b.CreatedAt, &b.UpdatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		books = append(books, b)
+	}
+	return books, total, rows.Err()
+}

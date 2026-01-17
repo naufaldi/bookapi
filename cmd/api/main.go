@@ -9,9 +9,14 @@ import (
 	"strings"
 	"time"
 
-	apphttp "bookapi/internal/http"
-	"bookapi/internal/store"
-	"bookapi/internal/usecase"
+	"bookapi/internal/auth"
+	"bookapi/internal/book"
+	"bookapi/internal/httpx"
+	"bookapi/internal/profile"
+	"bookapi/internal/rating"
+	"bookapi/internal/readinglist"
+	"bookapi/internal/session"
+	"bookapi/internal/user"
 
 	_ "bookapi/docs"
 
@@ -19,16 +24,6 @@ import (
 	"github.com/joho/godotenv"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
-
-// @title Book API
-// @version 1.0
-// @description Simple Book Tracking API with authentication
-// @host localhost:8080
-// @BasePath /
-// @securityDefinitions.apikey Bearer
-// @in header
-// @name Authorization
-// @description Enter the token with the `Bearer ` prefix
 
 func main() {
 	_ = godotenv.Load(".env.local")
@@ -40,29 +35,39 @@ func main() {
 	dbPool := mustOpenDB(databaseDSN)
 	defer dbPool.Close()
 
-	bookRepository := store.NewBookPG(dbPool)
-	userRepository := store.NewUserPG(dbPool)
-	readingListRepository := store.NewReadingListPG(dbPool)
-	sessionRepository := store.NewSessionPG(dbPool)
-	blacklistRepository := store.NewBlacklistPG(dbPool)
+	// 1. Setup Modules (Repositories & Services)
+	bookRepo := book.NewPostgresRepo(dbPool)
+	bookService := book.NewService(bookRepo)
+	bookHandler := book.NewHTTPHandler(bookService)
 
-	ratingRepository := store.NewRatingPG(dbPool)
-	ratingHandler := apphttp.NewRatingHandler(ratingRepository)
+	userRepo := user.NewPostgresRepo(dbPool)
+	userService := user.NewService(userRepo)
+	userHandler := user.NewHTTPHandler(userService)
 
-	bookHandler := apphttp.NewBookHandler(bookRepository)
-	userHandler := apphttp.NewUserHandler(userRepository, sessionRepository, jwtSecret)
-	authHandler := apphttp.NewAuthHandler(jwtSecret, sessionRepository, blacklistRepository, userRepository)
-	sessionHandler := apphttp.NewSessionHandler(sessionRepository)
-	readingListHandler := apphttp.NewReadingListHandler(readingListRepository)
+	sessionRepo := session.NewPostgresRepo(dbPool)
+	blacklistRepo := session.NewBlacklistPostgresRepo(dbPool)
+	sessionService := session.NewService(sessionRepo, blacklistRepo)
+	sessionHandler := session.NewHTTPHandler(sessionService)
 
-	profileUsecase := usecase.NewProfileUsecase(userRepository, ratingRepository, readingListRepository)
-	profileHandler := apphttp.NewProfileHandler(profileUsecase)
+	authService := auth.NewService(jwtSecret, userService, sessionService)
+	authHandler := auth.NewHTTPHandler(authService)
 
+	ratingRepo := rating.NewPostgresRepo(dbPool)
+	ratingService := rating.NewService(ratingRepo)
+	ratingHandler := rating.NewHTTPHandler(ratingService)
+
+	readingListRepo := readinglist.NewPostgresRepo(dbPool)
+	readingListService := readinglist.NewService(readingListRepo)
+	readingListHandler := readinglist.NewHTTPHandler(readingListService)
+
+	profileService := profile.NewService(userService, ratingService, readingListService)
+	profileHandler := profile.NewHTTPHandler(profileService)
+
+	// 2. Middlewares & Routing
 	allowedOrigins := []string{"http://localhost:3000", "http://localhost:5173"}
 	if origins := os.Getenv("ALLOWED_ORIGINS"); origins != "" {
 		allowedOrigins = strings.Split(origins, ",")
 	}
-
 	maxRequestSize := int64(1 * 1024 * 1024)
 	if sizeMB := os.Getenv("MAX_REQUEST_SIZE_MB"); sizeMB != "" {
 		if size, err := strconv.ParseInt(sizeMB, 10, 64); err == nil {
@@ -70,17 +75,17 @@ func main() {
 		}
 	}
 
-	router := http.NewServeMux()
-	booksSubRouter := http.NewServeMux()
+	authMid := httpx.AuthMiddleware(jwtSecret, blacklistRepo)
 
-	// Swagger UI endpoint
-	router.HandleFunc("/swagger/", httpSwagger.WrapHandler)
+	mux := http.NewServeMux()
 
-	router.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	// Infrastructure & Public
+	mux.HandleFunc("/swagger/", httpSwagger.WrapHandler)
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
+		w.Write([]byte("ok"))
 	})
-	router.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 		defer cancel()
 		if err := dbPool.Ping(ctx); err != nil {
@@ -88,116 +93,45 @@ func main() {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ready"))
+		w.Write([]byte("ready"))
 	})
 
-	// Public routes - register before protected routes to avoid conflicts
-	router.HandleFunc("/books", bookHandler.List)
+	// Books
+	mux.HandleFunc("GET /books", bookHandler.List)
+	mux.HandleFunc("GET /books/{isbn}", bookHandler.GetByISBN)
+	mux.HandleFunc("GET /books/{isbn}/rating", ratingHandler.GetRating)
+	mux.Handle("POST /books/{isbn}/rating", authMid(http.HandlerFunc(ratingHandler.CreateRating)))
 
-	router.HandleFunc("/users/register", userHandler.RegisterUser)
-	router.HandleFunc("/users/login", userHandler.LoginUser)
-	
-	protectedLogout := apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(http.HandlerFunc(authHandler.LogoutHandler))
-	router.Handle("/auth/logout", protectedLogout)
-	router.HandleFunc("/auth/refresh", authHandler.RefreshTokenHandler)
+	// Auth & Users
+	mux.HandleFunc("POST /users/register", userHandler.RegisterUser)
+	mux.HandleFunc("POST /users/login", authHandler.Login)
+	mux.HandleFunc("POST /auth/refresh", authHandler.RefreshToken)
+	mux.Handle("POST /auth/logout", authMid(http.HandlerFunc(authHandler.Logout)))
 
-	// Protected route - GET /me
-	protectedMe := apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(http.HandlerFunc(userHandler.GetCurrentUser))
-	router.Handle("/me", protectedMe)
-
-	// Profile routes
-	router.Handle("/me/profile", apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Me
+	mux.Handle("GET /me", authMid(http.HandlerFunc(userHandler.GetCurrentUser)))
+	mux.Handle("GET /me/profile", authMid(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPatch {
 			profileHandler.UpdateProfile(w, r)
 			return
 		}
 		profileHandler.GetOwnProfile(w, r)
 	})))
+	mux.Handle("GET /me/sessions", authMid(http.HandlerFunc(sessionHandler.ListSessions)))
+	mux.Handle("DELETE /me/sessions/{id}", authMid(http.HandlerFunc(sessionHandler.DeleteSession)))
 
-	// Reading list sub-router for protected /users/* routes
-	readingListMux := http.NewServeMux()
-	readingListMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.Trim(r.URL.Path, "/")
-		parts := strings.Split(path, "/")
-		
-		// /users/{id}/profile
-		if len(parts) == 3 && parts[2] == "profile" {
-			if r.Method == http.MethodGet {
-				profileHandler.GetPublicProfile(w, r)
-				return
-			}
-		}
+	// Users & Reading Lists
+	mux.HandleFunc("GET /users/{id}/profile", profileHandler.GetPublicProfile)
+	mux.Handle("POST /users/readinglist", authMid(http.HandlerFunc(readingListHandler.AddOrUpdate)))
+	mux.HandleFunc("GET /users/{id}/{status}", readingListHandler.ListByStatus)
 
-		// Reading list routes
-		if len(parts) == 2 {
-			list := strings.ToUpper(parts[1])
-			if list == "WISHLIST" || list == "READING" || list == "FINISHED" {
-				// Reading list routes need auth
-				apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					switch r.Method {
-					case http.MethodPost:
-						readingListHandler.AddOrUpdateReadingListItem(w, r)
-					case http.MethodGet:
-						readingListHandler.ListReadingListByStatus(w, r)
-					default:
-						w.WriteHeader(http.StatusMethodNotAllowed)
-					}
-				})).ServeHTTP(w, r)
-				return
-			}
-		}
-		
-		http.NotFound(w, r)
-	})
-	router.Handle("/users/", readingListMux)
+	// Global Middlewares
+	var handler http.Handler = mux
+	handler = httpx.SecurityHeadersMiddleware(handler)
+	handler = httpx.RequestSizeLimitMiddleware(maxRequestSize)(handler)
+	handler = httpx.CORSMiddleware(allowedOrigins)(handler)
 
-	// Session management routes
-	sessionMux := http.NewServeMux()
-	sessionMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.Trim(r.URL.Path, "/")
-		parts := strings.Split(path, "/")
-		if len(parts) == 3 && parts[0] == "me" && parts[1] == "sessions" {
-			if r.Method == http.MethodDelete {
-				sessionHandler.DeleteSessionHandler(w, r)
-				return
-			}
-		}
-		if r.Method == http.MethodGet {
-			sessionHandler.ListSessionsHandler(w, r)
-		} else {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
-	})
-	protectedSessions := apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(sessionMux)
-	router.Handle("/me/sessions/", protectedSessions)
-
-	// Books sub-router for /books/* routes (includes /books/{isbn}/rating)
-	booksSubRouter.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.Trim(r.URL.Path, "/")
-		if strings.Count(path, "/") == 2 && strings.HasSuffix(path, "/rating") {
-			switch r.Method {
-			case http.MethodPost:
-				apphttp.AuthMiddleware(jwtSecret, blacklistRepository)(http.HandlerFunc(ratingHandler.CreateRating)).ServeHTTP(w, r)
-			case http.MethodGet:
-				ratingHandler.GetRating(w, r)
-			default:
-				w.WriteHeader(http.StatusMethodNotAllowed)
-			}
-			return
-		}
-		switch r.Method {
-		case http.MethodGet:
-			bookHandler.GetByISBN(w, r)
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
-	})
-	router.Handle("/books/", booksSubRouter)
-
-	handler := apphttp.SecurityHeadersMiddleware(router)
-	handler = apphttp.RequestSizeLimitMiddleware(maxRequestSize)(handler)
-	handler = apphttp.CORSMiddleware(allowedOrigins)(handler)
-
+	log.Printf("Starting server on %s", serverAddress)
 	httpServer := &http.Server{
 		Addr:         serverAddress,
 		Handler:      handler,
@@ -206,7 +140,6 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("Starting server on %s", serverAddress)
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
@@ -237,22 +170,8 @@ func mustOpenDB(dsn string) *pgxpool.Pool {
 	defer cancel()
 	if err := pool.Ping(pingCtx); err != nil {
 		pool.Close()
-		log.Fatalf("cannot ping database (%s): %v", redactDSN(dsn), err)
+		log.Fatalf("cannot ping database: %v", err)
 	}
 	log.Println("database connection OK")
 	return pool
-}
-
-func redactDSN(dsn string) string {
-	const marker = "://"
-	start := strings.Index(dsn, marker)
-	if start < 0 {
-		return dsn
-	}
-	start += len(marker)
-	end := strings.Index(dsn[start:], "@")
-	if end < 0 {
-		return dsn
-	}
-	return dsn[:start] + "***" + dsn[start+end:]
 }

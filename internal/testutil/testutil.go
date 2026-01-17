@@ -8,14 +8,15 @@ import (
 	"net/http/httptest"
 	"time"
 
-	"bookapi/internal/auth"
-	"bookapi/internal/entity"
+	"bookapi/internal/book"
+	"bookapi/internal/platform/crypto"
+	"bookapi/internal/user"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
 // TestUser is a mock user for testing
-var TestUser = entity.User{
+var TestUser = user.User{
 	ID:        "test-user-id-123",
 	Username:  "testuser",
 	Email:     "test@example.com",
@@ -26,7 +27,7 @@ var TestUser = entity.User{
 }
 
 // TestAdminUser is a mock admin user for testing
-var TestAdminUser = entity.User{
+var TestAdminUser = user.User{
 	ID:        "test-admin-id-456",
 	Username:  "adminuser",
 	Email:     "admin@example.com",
@@ -37,7 +38,7 @@ var TestAdminUser = entity.User{
 }
 
 // TestBook is a mock book for testing
-var TestBook = entity.Book{
+var TestBook = book.Book{
 	ID:          "test-book-id-789",
 	ISBN:        "978-0-123456-78-9",
 	Title:       "Test Book Title",
@@ -50,13 +51,13 @@ var TestBook = entity.Book{
 
 // GenerateTestToken generates a JWT token for testing
 func GenerateTestToken(secret, userID, role string) string {
-	token, _, _ := auth.GenerateToken(secret, userID, role, time.Hour)
+	token, _, _ := crypto.GenerateToken(secret, userID, role, time.Hour)
 	return token
 }
 
 // GenerateExpiredToken generates an expired JWT token for testing
 func GenerateExpiredToken(secret, userID, role string) string {
-	c := auth.Claims{
+	c := crypto.Claims{
 		Sub:  userID,
 		Role: role,
 		RegisteredClaims: jwt.RegisteredClaims{
