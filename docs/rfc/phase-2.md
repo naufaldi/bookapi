@@ -31,49 +31,58 @@ The `bookapi` project has successfully implemented its first 5 phases of securit
 
 ## Architecture
 
-### System Flow: Cron Ingestion
-The ingestion process will discover books via the Open Library Search API and hydrate detailed metadata via the Books API.
+### System Flow: Cron Ingestion with Materialization
+The ingestion process discovers books via the Open Library Search API, hydrates detailed metadata via the Books API, stores raw data in `catalog_books`/`catalog_sources` (source-of-truth), and then materializes into the `books` table so `/books` endpoints show ingested data.
+
+**Why keep `catalog_books` separate?**
+- Open Library data can be incomplete or inconsistent.
+- Keeping upstream data separate allows us to evolve mapping rules (genre defaults, publisher parsing, etc.) without losing provenance.
+- `catalog_sources` stores raw JSON for debugging and reprocessing.
 
 ```mermaid
-graph TD
-    Cron[Cron Job / Trigger] -->|POST /internal/jobs/ingest| API[BookAPI]
-    API -->|Search Books| OL_Search[Open Library Search API]
-    OL_Search -->|ISBNs / Keys| API
-    API -->|Fetch Details| OL_Books[Open Library Books API]
-    OL_Books -->|Raw JSON| API
-    API -->|Upsert| DB[(PostgreSQL)]
-    DB -->|Catalog Data| API
+flowchart TD
+  OpenLibrary[OpenLibraryAPI] --> IngestService
+
+  IngestService -->|upsert_raw| CatalogBooks[(catalog_books)]
+  IngestService -->|upsert_raw| CatalogSources[(catalog_sources)]
+  IngestService -->|record_run| IngestRuns[(ingest_runs)]
+
+  IngestService -->|materialize_upsert| Books[(books)]
+
+  Books --> BooksList[GET_/books]
+  Books --> BookByISBN[GET_/books/{isbn}]
+
+  ReadingListAPI[ReadingListAPI] --> UserBooks[(user_books)]
+  UserBooks --> Books
+
+  RatingsAPI[RatingsAPI] --> Ratings[(ratings)]
+  Ratings --> Books
 ```
 
-### Request Flow: Read-Through Cache
-When a user requests a book that isn't in our local catalog, we fetch it from Open Library and cache it.
+### Request Flow: Books API (Materialized from Catalog)
+Users browse books via `GET /books` and `GET /books/{isbn}`, which query the `books` table. This table is populated by the ingestion job's materialization step, which transforms `catalog_books` data into the app's normalized schema.
+
+**Materialization Rules:**
+- `books.genre = <subject>` (the discovery subject used during ingestion, e.g., "fiction", "history", "science")
+- `books.publisher = "Unknown"` if missing from Open Library
+- ISBN preference: 13-digit when available
+- Other fields map directly from `catalog_books` (title, subtitle, description, cover_url, etc.)
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant Handler as Catalog Handler
-    participant Service as Catalog Service
-    participant Repo as Postgres Repo
-    participant OL as Open Library API
+    participant Handler as Book Handler
+    participant Service as Book Service
+    participant Repo as Book Repo
     participant DB as Postgres
 
-    User->>Handler: GET /v1/catalog/books/{isbn}
-    Handler->>Service: GetByISBN(isbn)
-    Service->>Repo: FindByISBN(isbn)
-    Repo->>DB: SELECT ...
-    DB-->>Repo: Result (Found/Not Found)
-    
-    alt Not Found or Stale
-        Repo-->>Service: Not Found / Stale
-        Service->>OL: GET /api/books?bibkeys=ISBN:{isbn}...
-        OL-->>Service: Book Data (JSON)
-        Service->>Repo: Upsert(book)
-        Repo->>DB: INSERT/UPDATE ...
-    else Found and Fresh
-        Repo-->>Service: Book Data
-    end
-    
-    Service-->>Handler: Book Data
+    User->>Handler: GET /books or GET /books/{isbn}
+    Handler->>Service: List(q) or GetByISBN(isbn)
+    Service->>Repo: Query books table
+    Repo->>DB: SELECT FROM books ...
+    DB-->>Repo: Book Data
+    Repo-->>Service: Book(s)
+    Service-->>Handler: Book(s)
     Handler-->>User: JSON Response
 ```
 
@@ -120,9 +129,11 @@ All responses will follow this format:
 ```
 
 ### Endpoints
-- `GET /v1/catalog/books/{isbn}`: Fetch book details from the catalog.
-- `GET /v1/catalog/search?q=...&limit=...&offset=...`: Search the catalog using PostgreSQL Full-Text Search.
-- `POST /internal/jobs/ingest`: (Protected) Manually trigger the Open Library ingestion job.
+- `GET /books`: List books with search/filtering (queries the `books` table, populated by ingestion materialization).
+- `GET /books/{isbn}`: Get book details by ISBN (queries the `books` table).
+- `POST /internal/jobs/ingest`: (Protected) Manually trigger the Open Library ingestion job, which upserts into `catalog_books` and then materializes into `books`.
+
+**Note**: Catalog-specific endpoints (`/v1/catalog/*`) were removed to avoid confusion. The main API is `/books`, which shows ingested data after materialization.
 
 ## Open Library Ingestion Spec
 
@@ -134,7 +145,10 @@ We will use the following Open Library endpoints:
 ### Strategy
 1. **Discovery**: Use the Search API to find books by popular subjects (e.g., 'fiction', 'science', 'history').
 2. **Hydration**: Collect ISBNs and fetch full details in batches of 50-100 using the Books API.
-3. **Storage**: Upsert into `catalog_books` and cache the raw JSON in `catalog_sources`.
+3. **Storage**: 
+   - Upsert into `catalog_books` (source-of-truth for Open Library data).
+   - Cache the raw JSON in `catalog_sources` for debugging/reprocessing.
+   - **Materialize** into `books` table (app-facing normalized schema) so `/books` endpoints show ingested data.
 4. **Rate Limiting**: 
    - Set a descriptive `User-Agent`: `BookAPI/1.0 (contact: your-email@example.com)`.
    - Implement exponential backoff for 429/5xx errors.

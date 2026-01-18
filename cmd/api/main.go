@@ -140,11 +140,9 @@ func main() {
 	// Ingest & Catalog
 	olClient := openlibrary.NewClient("BookAPI/1.0", cfg.IngestRPS, cfg.IngestMaxRetries)
 	catalogRepo := catalog.NewPostgresRepo(dbPool)
-	catalogService := catalog.NewService(catalogRepo)
-	catalogHandler := catalog.NewHTTPHandler(catalogService)
 
 	ingestRepo := ingest.NewPostgresRepo(dbPool)
-	ingestService := ingest.NewService(olClient, catalogRepo, ingestRepo, ingest.Config{
+	ingestService := ingest.NewService(olClient, catalogRepo, bookRepo, ingestRepo, ingest.Config{
 		BooksMax:      cfg.IngestBooksMax,
 		AuthorsMax:    cfg.IngestAuthorsMax,
 		Subjects:      cfg.IngestSubjects,
@@ -191,10 +189,6 @@ func main() {
 	mux.HandleFunc("GET /users/{id}/profile", profileHandler.GetPublicProfile)
 	mux.Handle("POST /users/readinglist", authMid(http.HandlerFunc(readingListHandler.AddOrUpdate)))
 	mux.HandleFunc("GET /users/{id}/{status}", readingListHandler.ListByStatus)
-
-	// Catalog
-	mux.HandleFunc("GET /v1/catalog/search", catalogHandler.Search)
-	mux.HandleFunc("GET /v1/catalog/books/{isbn}", catalogHandler.GetByISBN)
 
 	// Internal Jobs
 	mux.HandleFunc("POST /internal/jobs/ingest", ingestHandler.Ingest)

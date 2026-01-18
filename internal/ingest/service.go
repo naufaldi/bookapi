@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
+	"bookapi/internal/book"
 	"bookapi/internal/catalog"
 	"bookapi/internal/platform/openlibrary"
 )
@@ -29,14 +31,17 @@ type OpenLibraryClient interface {
 type Service struct {
 	olClient    OpenLibraryClient
 	catalogRepo catalog.Repository
+	bookRepo    book.Repository
 	ingestRepo  Repository
 	cfg         Config
+	currentSubject string
 }
 
-func NewService(olClient OpenLibraryClient, catalogRepo catalog.Repository, ingestRepo Repository, cfg Config) *Service {
+func NewService(olClient OpenLibraryClient, catalogRepo catalog.Repository, bookRepo book.Repository, ingestRepo Repository, cfg Config) *Service {
 	return &Service{
 		olClient:    olClient,
 		catalogRepo: catalogRepo,
+		bookRepo:    bookRepo,
 		ingestRepo:  ingestRepo,
 		cfg:         cfg,
 	}
@@ -97,6 +102,8 @@ func (s *Service) Run(ctx context.Context) (err error) {
 		if run.BooksUpserted >= neededBooks && run.AuthorsUpserted >= neededAuthors {
 			break
 		}
+
+		s.currentSubject = subject
 
 		// Discovery
 		searchLimit := 100
@@ -198,7 +205,7 @@ func (s *Service) hydrateBatch(ctx context.Context, run *Run, isbns []string, au
 	for bibkey, details := range batch {
 		isbn := strings.TrimPrefix(bibkey, "ISBN:")
 
-		book := &catalog.Book{
+		catalogBook := &catalog.Book{
 			ISBN13:        isbn,
 			Title:         details.Title,
 			Subtitle:      details.Subtitle,
@@ -211,10 +218,60 @@ func (s *Service) hydrateBatch(ctx context.Context, run *Run, isbns []string, au
 		}
 
 		rawJSON, _ := json.Marshal(details)
-		if err := s.catalogRepo.UpsertBook(ctx, book, rawJSON); err != nil {
-			log.Printf("Failed to upsert book %s: %v", isbn, err)
+		if err := s.catalogRepo.UpsertBook(ctx, catalogBook, rawJSON); err != nil {
+			log.Printf("Failed to upsert book %s to catalog: %v", isbn, err)
 			continue
 		}
+
+		// Materialize into books table
+		publisher := catalogBook.Publisher
+		if publisher == "" {
+			publisher = "Unknown"
+		}
+		genre := s.currentSubject
+		if genre == "" {
+			genre = "Unknown"
+		}
+
+		var publicationYear *int
+		if catalogBook.PublishedDate != "" {
+			yearStr := extractYear(catalogBook.PublishedDate)
+			if yearStr != "" {
+				if year, err := strconv.Atoi(yearStr); err == nil {
+					publicationYear = &year
+				}
+			}
+		}
+
+		var pageCount *int
+		if catalogBook.PageCount > 0 {
+			pageCount = &catalogBook.PageCount
+		}
+
+		var coverURL *string
+		if catalogBook.CoverURL != "" {
+			coverURL = &catalogBook.CoverURL
+		}
+
+		appBook := &book.Book{
+			ISBN:            isbn,
+			Title:           catalogBook.Title,
+			Subtitle:        catalogBook.Subtitle,
+			Genre:           genre,
+			Publisher:       publisher,
+			Description:     catalogBook.Description,
+			PublishedDate:   catalogBook.PublishedDate,
+			PublicationYear: publicationYear,
+			PageCount:       pageCount,
+			Language:        catalogBook.Language,
+			CoverURL:        coverURL,
+		}
+
+		if err := s.bookRepo.UpsertFromIngest(ctx, appBook); err != nil {
+			log.Printf("Failed to materialize book %s to books table: %v", isbn, err)
+			continue
+		}
+
 		run.BooksUpserted++
 		_ = s.ingestRepo.LinkBookToRun(ctx, run.ID, isbn)
 
@@ -251,6 +308,17 @@ func formatBio(bio interface{}) string {
 	if m, ok := bio.(map[string]interface{}); ok {
 		if v, ok := m["value"].(string); ok {
 			return v
+		}
+	}
+	return ""
+}
+
+func extractYear(dateStr string) string {
+	parts := strings.Fields(dateStr)
+	if len(parts) > 0 {
+		yearStr := parts[len(parts)-1]
+		if len(yearStr) == 4 {
+			return yearStr
 		}
 	}
 	return ""

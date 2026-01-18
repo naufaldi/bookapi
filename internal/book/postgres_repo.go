@@ -64,10 +64,10 @@ func (r *PostgresRepo) List(ctx context.Context, q Query) ([]Book, int, error) {
 		args = append(args, q.Search)
 		argn++
 	} else if q.Q != "" {
-		clauses = append(clauses, fmt.Sprintf("(title ILIKE $%d OR publisher ILIKE $%d)", argn, argn+1))
+		clauses = append(clauses, fmt.Sprintf("(isbn ILIKE $%d OR title ILIKE $%d OR publisher ILIKE $%d OR description ILIKE $%d OR genre ILIKE $%d)", argn, argn+1, argn+2, argn+3, argn+4))
 		pattern := "%" + q.Q + "%"
-		args = append(args, pattern, pattern)
-		argn += 2
+		args = append(args, pattern, pattern, pattern, pattern, pattern)
+		argn += 5
 	}
 
 	where := "WHERE " + strings.Join(clauses, " AND ")
@@ -111,8 +111,8 @@ func (r *PostgresRepo) List(ctx context.Context, q Query) ([]Book, int, error) {
 	}
 
 	dataSQL := fmt.Sprintf(`
-		SELECT b.id, b.isbn, b.title, b.genre, b.publisher, b.description, 
-		       b.publication_year, b.page_count, b.language, b.cover_url,
+		SELECT b.id, b.isbn, b.title, b.subtitle, b.genre, b.publisher, b.description, 
+		       b.published_date, b.publication_year, b.page_count, b.language, b.cover_url,
 		       b.created_at, b.updated_at
 		FROM books b
 		%s
@@ -133,8 +133,8 @@ func (r *PostgresRepo) List(ctx context.Context, q Query) ([]Book, int, error) {
 	for rows.Next() {
 		var b Book
 		if err := rows.Scan(
-			&b.ID, &b.ISBN, &b.Title, &b.Genre, &b.Publisher, &b.Description,
-			&b.PublicationYear, &b.PageCount, &b.Language, &b.CoverURL,
+			&b.ID, &b.ISBN, &b.Title, &b.Subtitle, &b.Genre, &b.Publisher, &b.Description,
+			&b.PublishedDate, &b.PublicationYear, &b.PageCount, &b.Language, &b.CoverURL,
 			&b.CreatedAt, &b.UpdatedAt,
 		); err != nil {
 			return nil, 0, err
@@ -146,8 +146,8 @@ func (r *PostgresRepo) List(ctx context.Context, q Query) ([]Book, int, error) {
 
 func (r *PostgresRepo) GetByISBN(ctx context.Context, isbn string) (Book, error) {
 	const query = `
-		SELECT id, isbn, title, genre, publisher, description, 
-		       publication_year, page_count, language, cover_url,
+		SELECT id, isbn, title, subtitle, genre, publisher, description, 
+		       published_date, publication_year, page_count, language, cover_url,
 		       created_at, updated_at
 		FROM books
 		WHERE isbn = $1
@@ -155,8 +155,8 @@ func (r *PostgresRepo) GetByISBN(ctx context.Context, isbn string) (Book, error)
 	`
 	var b Book
 	err := r.db.QueryRow(ctx, query, isbn).Scan(
-		&b.ID, &b.ISBN, &b.Title, &b.Genre, &b.Publisher, &b.Description,
-		&b.PublicationYear, &b.PageCount, &b.Language, &b.CoverURL,
+		&b.ID, &b.ISBN, &b.Title, &b.Subtitle, &b.Genre, &b.Publisher, &b.Description,
+		&b.PublishedDate, &b.PublicationYear, &b.PageCount, &b.Language, &b.CoverURL,
 		&b.CreatedAt, &b.UpdatedAt,
 	)
 
@@ -167,4 +167,30 @@ func (r *PostgresRepo) GetByISBN(ctx context.Context, isbn string) (Book, error)
 		return Book{}, err
 	}
 	return b, nil
+}
+
+func (r *PostgresRepo) UpsertFromIngest(ctx context.Context, book *Book) error {
+	const sql = `
+		INSERT INTO books (isbn, title, subtitle, genre, publisher, description, 
+		                   published_date, publication_year, page_count, language, cover_url, 
+		                   created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+		ON CONFLICT (isbn) DO UPDATE SET
+			title = EXCLUDED.title,
+			subtitle = EXCLUDED.subtitle,
+			genre = EXCLUDED.genre,
+			publisher = EXCLUDED.publisher,
+			description = EXCLUDED.description,
+			published_date = EXCLUDED.published_date,
+			publication_year = EXCLUDED.publication_year,
+			page_count = EXCLUDED.page_count,
+			language = EXCLUDED.language,
+			cover_url = EXCLUDED.cover_url,
+			updated_at = NOW()`
+
+	_, err := r.db.Exec(ctx, sql,
+		book.ISBN, book.Title, book.Subtitle, book.Genre, book.Publisher, book.Description,
+		book.PublishedDate, book.PublicationYear, book.PageCount, book.Language, book.CoverURL,
+	)
+	return err
 }

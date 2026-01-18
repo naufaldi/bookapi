@@ -21,7 +21,7 @@ func NewPostgresRepo(db *pgxpool.Pool) *PostgresRepo {
 func (r *PostgresRepo) UpsertReadingListItem(ctx context.Context, userID string, isbn string, status string) error {
 	const upsertSQL = `
 		INSERT INTO user_books (user_id, book_id, status, created_at, updated_at)
-		SELECT $1, $2, $3, NOW(), NOW()
+		SELECT $1, b.id, $3, NOW(), NOW()
 		FROM books b
 		WHERE b.isbn = $2
 		ON CONFLICT (user_id, book_id)
@@ -50,8 +50,8 @@ func (r *PostgresRepo) ListReadingListByStatus(ctx context.Context, userID strin
 	}
 
 	const dataSQL = `
-		SELECT b.id, b.isbn, b.title, b.genre, b.publisher, COALESCE(b.description, '') as description, 
-		       b.publication_year, b.page_count, b.language, b.cover_url, b.created_at, b.updated_at
+		SELECT b.id, b.isbn, b.title, b.subtitle, b.genre, b.publisher, COALESCE(b.description, '') as description, 
+		       b.published_date, b.publication_year, b.page_count, b.language, b.cover_url, b.created_at, b.updated_at
 		FROM user_books ub
 		JOIN books b ON b.id = ub.book_id
 		WHERE ub.user_id = $1 AND ub.status = $2
@@ -68,8 +68,8 @@ func (r *PostgresRepo) ListReadingListByStatus(ctx context.Context, userID strin
 	for rows.Next() {
 		var b book.Book
 		if err := rows.Scan(
-			&b.ID, &b.ISBN, &b.Title, &b.Genre, &b.Publisher, &b.Description,
-			&b.PublicationYear, &b.PageCount, &b.Language, &b.CoverURL,
+			&b.ID, &b.ISBN, &b.Title, &b.Subtitle, &b.Genre, &b.Publisher, &b.Description,
+			&b.PublishedDate, &b.PublicationYear, &b.PageCount, &b.Language, &b.CoverURL,
 			&b.CreatedAt, &b.UpdatedAt,
 		); err != nil {
 			return nil, 0, err

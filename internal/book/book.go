@@ -13,9 +13,11 @@ type Book struct {
 	ID              string    `json:"id"`
 	ISBN            string    `json:"isbn"`
 	Title           string    `json:"title"`
+	Subtitle        string    `json:"subtitle,omitempty"`
 	Genre           string    `json:"genre,omitempty"`
 	Publisher       string    `json:"publisher,omitempty"`
 	Description     string    `json:"description,omitempty"`
+	PublishedDate   string    `json:"published_date,omitempty"`
 	PublicationYear *int      `json:"publication_year,omitempty"`
 	PageCount       *int      `json:"page_count,omitempty"`
 	Language        string    `json:"language,omitempty"`
