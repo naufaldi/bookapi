@@ -17,6 +17,17 @@ func NewHTTPHandler(service *Service) *HTTPHandler {
 	return &HTTPHandler{service: service}
 }
 
+// GetOwnProfile handles GET /me/profile
+// @Summary Get own profile
+// @Description Get the authenticated user's complete profile
+// @Tags profiles
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Success 200 {object} httpx.SuccessResponse
+// @Failure 401 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /me/profile [get]
 func (h *HTTPHandler) GetOwnProfile(w http.ResponseWriter, r *http.Request) {
 	userID := httpx.UserIDFrom(r)
 	if userID == "" {
@@ -33,6 +44,18 @@ func (h *HTTPHandler) GetOwnProfile(w http.ResponseWriter, r *http.Request) {
 	httpx.JSONSuccess(w, p, nil)
 }
 
+// GetPublicProfile handles GET /users/{id}/profile
+// @Summary Get public profile
+// @Description Get a user's public profile information
+// @Tags profiles
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Success 200 {object} httpx.SuccessResponse
+// @Failure 400 {object} httpx.ErrorResponse
+// @Failure 404 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /users/{id}/profile [get]
 func (h *HTTPHandler) GetPublicProfile(w http.ResponseWriter, r *http.Request) {
 	userID := r.PathValue("id")
 	if userID == "" {
@@ -53,6 +76,19 @@ func (h *HTTPHandler) GetPublicProfile(w http.ResponseWriter, r *http.Request) {
 	httpx.JSONSuccess(w, p, nil)
 }
 
+// UpdateProfile handles PATCH /me/profile
+// @Summary Update own profile
+// @Description Update the authenticated user's profile
+// @Tags profiles
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param request body UpdateCommand true "Profile update request"
+// @Success 200 {object} httpx.SuccessResponse
+// @Failure 400 {object} httpx.ErrorResponse
+// @Failure 401 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /me/profile [patch]
 func (h *HTTPHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	userID := httpx.UserIDFrom(r)
 	if userID == "" {

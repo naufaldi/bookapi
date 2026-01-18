@@ -23,6 +23,17 @@ type SessionResponse struct {
 	IsCurrent  bool   `json:"is_current"`
 }
 
+// ListSessions handles GET /me/sessions
+// @Summary List user sessions
+// @Description Get all active sessions for the authenticated user
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Success 200 {object} httpx.SuccessResponse
+// @Failure 401 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /me/sessions [get]
 func (h *HTTPHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	userID := httpx.UserIDFrom(r)
 	if userID == "" {
@@ -58,6 +69,20 @@ func (h *HTTPHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	httpx.JSONSuccess(w, response, nil)
 }
 
+// DeleteSession handles DELETE /me/sessions/{id}
+// @Summary Delete session
+// @Description Delete a specific session for the authenticated user
+// @Tags sessions
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param id path string true "Session ID"
+// @Success 204 "No Content"
+// @Failure 400 {object} httpx.ErrorResponse
+// @Failure 401 {object} httpx.ErrorResponse
+// @Failure 404 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /me/sessions/{id} [delete]
 func (h *HTTPHandler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	userID := httpx.UserIDFrom(r)
 	if userID == "" {

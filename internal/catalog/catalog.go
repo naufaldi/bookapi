@@ -33,3 +33,11 @@ type Source struct {
 	RawJSON    []byte
 	FetchedAt  time.Time
 }
+
+type SearchQuery struct {
+	Q         string
+	Publisher string
+	Language  string
+	Limit     int
+	Offset    int
+}

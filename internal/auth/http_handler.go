@@ -22,6 +22,18 @@ type LoginReq struct {
 	RememberMe bool   `json:"remember_me"`
 }
 
+// Login handles POST /users/login
+// @Summary User login
+// @Description Authenticate user and receive access and refresh tokens
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body LoginReq true "Login request"
+// @Success 200 {object} httpx.SuccessResponse
+// @Failure 400 {object} httpx.ErrorResponse
+// @Failure 401 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /users/login [post]
 func (h *HTTPHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -62,6 +74,18 @@ type RefreshReq struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
+// RefreshToken handles POST /auth/refresh
+// @Summary Refresh access token
+// @Description Get a new access token using a refresh token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body RefreshReq true "Refresh token request"
+// @Success 200 {object} httpx.SuccessResponse
+// @Failure 400 {object} httpx.ErrorResponse
+// @Failure 401 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /auth/refresh [post]
 func (h *HTTPHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	var req RefreshReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -91,6 +115,17 @@ func (h *HTTPHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	}, nil)
 }
 
+// Logout handles POST /auth/logout
+// @Summary User logout
+// @Description Logout and invalidate the current access token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Success 204 "No Content"
+// @Failure 401 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /auth/logout [post]
 func (h *HTTPHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if !strings.HasPrefix(authHeader, "Bearer ") {

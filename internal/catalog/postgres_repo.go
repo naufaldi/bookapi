@@ -2,7 +2,9 @@ package catalog
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -16,6 +18,8 @@ type Repository interface {
 	GetTotalAuthors(ctx context.Context) (int, error)
 	GetBookUpdatedAt(ctx context.Context, isbn13 string) (time.Time, error)
 	GetAuthorUpdatedAt(ctx context.Context, key string) (time.Time, error)
+	List(ctx context.Context, q SearchQuery) ([]Book, int, error)
+	GetByISBN(ctx context.Context, isbn13 string) (Book, error)
 }
 
 type PostgresRepo struct {
@@ -131,4 +135,85 @@ func (r *PostgresRepo) GetAuthorUpdatedAt(ctx context.Context, key string) (time
 		return time.Time{}, nil
 	}
 	return t, err
+}
+
+func (r *PostgresRepo) List(ctx context.Context, q SearchQuery) ([]Book, int, error) {
+	clauses := []string{"1=1"}
+	args := []any{}
+	argn := 1
+
+	if q.Publisher != "" {
+		clauses = append(clauses, fmt.Sprintf("publisher ILIKE $%d", argn))
+		args = append(args, "%"+q.Publisher+"%")
+		argn++
+	}
+
+	if q.Language != "" {
+		clauses = append(clauses, fmt.Sprintf("language = $%d", argn))
+		args = append(args, q.Language)
+		argn++
+	}
+
+	if q.Q != "" {
+		clauses = append(clauses, fmt.Sprintf("search_vector @@ plainto_tsquery('english', $%d)", argn))
+		args = append(args, q.Q)
+		argn++
+	}
+
+	where := "WHERE " + strings.Join(clauses, " AND ")
+
+	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM catalog_books %s", where)
+	var total int
+	if err := r.db.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	dataSQL := fmt.Sprintf(`
+		SELECT isbn13, title, subtitle, description, cover_url, published_date, publisher, language, page_count, updated_at
+		FROM catalog_books
+		%s
+		ORDER BY title ASC
+		LIMIT $%d OFFSET $%d`,
+		where, argn, argn+1)
+
+	argsWithPage := append([]any{}, args...)
+	argsWithPage = append(argsWithPage, q.Limit, q.Offset)
+	rows, err := r.db.Query(ctx, dataSQL, argsWithPage...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var out []Book
+	for rows.Next() {
+		var b Book
+		if err := rows.Scan(
+			&b.ISBN13, &b.Title, &b.Subtitle, &b.Description, &b.CoverURL,
+			&b.PublishedDate, &b.Publisher, &b.Language, &b.PageCount, &b.UpdatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, b)
+	}
+	return out, total, rows.Err()
+}
+
+func (r *PostgresRepo) GetByISBN(ctx context.Context, isbn13 string) (Book, error) {
+	const query = `
+		SELECT isbn13, title, subtitle, description, cover_url, published_date, publisher, language, page_count, updated_at
+		FROM catalog_books
+		WHERE isbn13 = $1
+	`
+	var b Book
+	err := r.db.QueryRow(ctx, query, isbn13).Scan(
+		&b.ISBN13, &b.Title, &b.Subtitle, &b.Description, &b.CoverURL,
+		&b.PublishedDate, &b.Publisher, &b.Language, &b.PageCount, &b.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Book{}, fmt.Errorf("book not found: %s", isbn13)
+		}
+		return Book{}, err
+	}
+	return b, nil
 }

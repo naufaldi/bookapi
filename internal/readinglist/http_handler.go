@@ -22,6 +22,20 @@ type upsertReq struct {
 	Status string `json:"status" validate:"required"`
 }
 
+// AddOrUpdate handles POST /users/readinglist
+// @Summary Add or update reading list entry
+// @Description Add a book to reading list or update its status (WISHLIST, READING, FINISHED)
+// @Tags reading-lists
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param request body upsertReq true "Reading list request"
+// @Success 204 "No Content"
+// @Failure 400 {object} httpx.ErrorResponse
+// @Failure 401 {object} httpx.ErrorResponse
+// @Failure 404 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /users/readinglist [post]
 func (h *HTTPHandler) AddOrUpdate(w http.ResponseWriter, r *http.Request) {
 	userID := httpx.UserIDFrom(r)
 	if userID == "" {
@@ -47,6 +61,20 @@ func (h *HTTPHandler) AddOrUpdate(w http.ResponseWriter, r *http.Request) {
 	httpx.JSONSuccessNoContent(w)
 }
 
+// ListByStatus handles GET /users/{id}/{status}
+// @Summary List books by status
+// @Description Get a user's reading list filtered by status (WISHLIST, READING, FINISHED)
+// @Tags reading-lists
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Param status path string true "Reading list status" Enums(WISHLIST, READING, FINISHED)
+// @Param limit query int false "Limit results" default(20)
+// @Param offset query int false "Offset for pagination" default(0)
+// @Success 200 {object} httpx.SuccessResponse
+// @Failure 400 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /users/{id}/{status} [get]
 func (h *HTTPHandler) ListByStatus(w http.ResponseWriter, r *http.Request) {
 	// Pattern: /users/{id}/{status}
 	userID := r.PathValue("id")

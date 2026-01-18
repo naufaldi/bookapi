@@ -17,6 +17,27 @@ func NewHTTPHandler(service *Service) *HTTPHandler {
 }
 
 // List handles GET /books
+// @Summary List books
+// @Description Get a paginated list of books with optional filtering and search
+// @Tags books
+// @Accept json
+// @Produce json
+// @Param page query int false "Page number" default(1)
+// @Param page_size query int false "Items per page" default(20)
+// @Param q query string false "Simple search query"
+// @Param search query string false "Full-text search query"
+// @Param genre query string false "Filter by genre"
+// @Param genres query string false "Filter by multiple genres (comma-separated)"
+// @Param publisher query string false "Filter by publisher"
+// @Param min_rating query number false "Minimum rating (0-5)"
+// @Param year_from query int false "Filter by publication year from"
+// @Param year_to query int false "Filter by publication year to"
+// @Param language query string false "Filter by language"
+// @Param sort query string false "Sort field"
+// @Param desc query boolean false "Sort descending" default(false)
+// @Success 200 {object} httpx.SuccessResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /books [get]
 func (h *HTTPHandler) List(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
@@ -78,6 +99,16 @@ func (h *HTTPHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetByISBN handles GET /books/{isbn}
+// @Summary Get book by ISBN
+// @Description Retrieve a book by its ISBN
+// @Tags books
+// @Accept json
+// @Produce json
+// @Param isbn path string true "Book ISBN"
+// @Success 200 {object} httpx.SuccessResponse
+// @Failure 404 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /books/{isbn} [get]
 func (h *HTTPHandler) GetByISBN(w http.ResponseWriter, r *http.Request) {
 	// Go 1.22+ routing: use r.PathValue
 	isbn := r.PathValue("isbn")

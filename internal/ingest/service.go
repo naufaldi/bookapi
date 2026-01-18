@@ -219,10 +219,15 @@ func (s *Service) hydrateBatch(ctx context.Context, run *Run, isbns []string, au
 		_ = s.ingestRepo.LinkBookToRun(ctx, run.ID, isbn)
 
 		for _, author := range details.Authors {
-			// author.URL is like "/authors/OL123A"
+			// author.URL can be like "/authors/OL123A" or "https://openlibrary.org/authors/OL123A/Name"
 			if author.URL != "" {
-				key := strings.TrimPrefix(author.URL, "/authors/")
-				authorKeys[key] = true
+				parts := strings.Split(author.URL, "/")
+				for i, p := range parts {
+					if p == "authors" && i+1 < len(parts) {
+						authorKeys[parts[i+1]] = true
+						break
+					}
+				}
 			}
 		}
 	}

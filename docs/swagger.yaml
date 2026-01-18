@@ -1,4 +1,822 @@
+basePath: /
+definitions:
+  auth.LoginReq:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      remember_me:
+        type: boolean
+    required:
+    - email
+    - password
+    type: object
+  auth.RefreshReq:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  httpx.ErrorDetail:
+    properties:
+      field:
+        type: string
+      message:
+        type: string
+    type: object
+  httpx.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/httpx.ErrorResponseBody'
+      success:
+        type: boolean
+    type: object
+  httpx.ErrorResponseBody:
+    properties:
+      code:
+        type: string
+      details:
+        items:
+          $ref: '#/definitions/httpx.ErrorDetail'
+        type: array
+      message:
+        type: string
+    type: object
+  httpx.SuccessResponse:
+    properties:
+      data: {}
+      meta: {}
+      success:
+        type: boolean
+    type: object
+  profile.UpdateCommand:
+    properties:
+      bio:
+        type: string
+      is_public:
+        type: boolean
+      location:
+        type: string
+      reading_preferences:
+        items:
+          type: integer
+        type: array
+      username:
+        type: string
+      website:
+        type: string
+    type: object
+  rating.createRatingReq:
+    properties:
+      star:
+        maximum: 5
+        minimum: 1
+        type: integer
+    required:
+    - star
+    type: object
+  readinglist.upsertReq:
+    properties:
+      isbn:
+        type: string
+      status:
+        type: string
+    required:
+    - isbn
+    - status
+    type: object
+  user.registerReq:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      username:
+        maxLength: 50
+        minLength: 3
+        type: string
+    required:
+    - email
+    - password
+    - username
+    type: object
+host: localhost:8080
 info:
-  contact: {}
-paths: {}
+  contact:
+    name: API Support
+  description: A REST API for tracking books you've read, want to read, or are currently
+    reading.
+  termsOfService: http://swagger.io/terms/
+  title: Personal Book Tracking API
+  version: "1.0"
+paths:
+  /auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Logout and invalidate the current access token
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: User logout
+      tags:
+      - auth
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Get a new access token using a refresh token
+      parameters:
+      - description: Refresh token request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RefreshReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Refresh access token
+      tags:
+      - auth
+  /books:
+    get:
+      consumes:
+      - application/json
+      description: Get a paginated list of books with optional filtering and search
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: page_size
+        type: integer
+      - description: Simple search query
+        in: query
+        name: q
+        type: string
+      - description: Full-text search query
+        in: query
+        name: search
+        type: string
+      - description: Filter by genre
+        in: query
+        name: genre
+        type: string
+      - description: Filter by multiple genres (comma-separated)
+        in: query
+        name: genres
+        type: string
+      - description: Filter by publisher
+        in: query
+        name: publisher
+        type: string
+      - description: Minimum rating (0-5)
+        in: query
+        name: min_rating
+        type: number
+      - description: Filter by publication year from
+        in: query
+        name: year_from
+        type: integer
+      - description: Filter by publication year to
+        in: query
+        name: year_to
+        type: integer
+      - description: Filter by language
+        in: query
+        name: language
+        type: string
+      - description: Sort field
+        in: query
+        name: sort
+        type: string
+      - default: false
+        description: Sort descending
+        in: query
+        name: desc
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: List books
+      tags:
+      - books
+  /books/{isbn}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a book by its ISBN
+      parameters:
+      - description: Book ISBN
+        in: path
+        name: isbn
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Get book by ISBN
+      tags:
+      - books
+  /books/{isbn}/rating:
+    get:
+      consumes:
+      - application/json
+      description: Get average rating and total count for a book
+      parameters:
+      - description: Book ISBN
+        in: path
+        name: isbn
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Get book rating
+      tags:
+      - ratings
+    post:
+      consumes:
+      - application/json
+      description: Rate a book (1-5 stars)
+      parameters:
+      - description: Book ISBN
+        in: path
+        name: isbn
+        required: true
+        type: string
+      - description: Rating request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/rating.createRatingReq'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Create or update book rating
+      tags:
+      - ratings
+  /healthz:
+    get:
+      consumes:
+      - application/json
+      description: Simple health check endpoint
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+      summary: Health check
+      tags:
+      - infrastructure
+  /internal/jobs/ingest:
+    post:
+      consumes:
+      - application/json
+      description: Trigger ingestion job to populate catalog from Open Library
+      parameters:
+      - description: Internal secret for authentication
+        in: header
+        name: X-Internal-Secret
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Trigger catalog ingestion
+      tags:
+      - internal
+  /me:
+    get:
+      consumes:
+      - application/json
+      description: Get the authenticated user's information
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Get current user
+      tags:
+      - users
+  /me/profile:
+    get:
+      consumes:
+      - application/json
+      description: Get the authenticated user's complete profile
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Get own profile
+      tags:
+      - profiles
+    patch:
+      consumes:
+      - application/json
+      description: Update the authenticated user's profile
+      parameters:
+      - description: Profile update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/profile.UpdateCommand'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Update own profile
+      tags:
+      - profiles
+  /me/sessions:
+    get:
+      consumes:
+      - application/json
+      description: Get all active sessions for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: List user sessions
+      tags:
+      - sessions
+  /me/sessions/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a specific session for the authenticated user
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Delete session
+      tags:
+      - sessions
+  /readyz:
+    get:
+      consumes:
+      - application/json
+      description: Check if the service is ready (database connectivity)
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: ready
+          schema:
+            type: string
+        "503":
+          description: db not ready
+          schema:
+            type: string
+      summary: Readiness check
+      tags:
+      - infrastructure
+  /users/{id}/{status}:
+    get:
+      consumes:
+      - application/json
+      description: Get a user's reading list filtered by status (WISHLIST, READING,
+        FINISHED)
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Reading list status
+        enum:
+        - WISHLIST
+        - READING
+        - FINISHED
+        in: path
+        name: status
+        required: true
+        type: string
+      - default: 20
+        description: Limit results
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Offset for pagination
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: List books by status
+      tags:
+      - reading-lists
+  /users/{id}/profile:
+    get:
+      consumes:
+      - application/json
+      description: Get a user's public profile information
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Get public profile
+      tags:
+      - profiles
+  /users/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user and receive access and refresh tokens
+      parameters:
+      - description: Login request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.LoginReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: User login
+      tags:
+      - auth
+  /users/readinglist:
+    post:
+      consumes:
+      - application/json
+      description: Add a book to reading list or update its status (WISHLIST, READING,
+        FINISHED)
+      parameters:
+      - description: Reading list request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/readinglist.upsertReq'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: Add or update reading list entry
+      tags:
+      - reading-lists
+  /users/register:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user account
+      parameters:
+      - description: Registration request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.registerReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Register a new user
+      tags:
+      - users
+  /v1/catalog/books/{isbn}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve master metadata for a book by its ISBN
+      parameters:
+      - description: Book ISBN
+        in: path
+        name: isbn
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Get catalog book by ISBN
+      tags:
+      - catalog
+  /v1/catalog/search:
+    get:
+      consumes:
+      - application/json
+      description: Search the global master catalog (Open Library data)
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        type: string
+      - description: Filter by publisher
+        in: query
+        name: publisher
+        type: string
+      - description: Filter by language
+        in: query
+        name: language
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.SuccessResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Search master catalog
+      tags:
+      - catalog
+schemes:
+- http
+- https
+securityDefinitions:
+  Bearer:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

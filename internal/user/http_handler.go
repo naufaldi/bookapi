@@ -23,6 +23,18 @@ type registerReq struct {
 	Password string `json:"password" validate:"required,password_strength"`
 }
 
+// RegisterUser handles POST /users/register
+// @Summary Register a new user
+// @Description Create a new user account
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param request body registerReq true "Registration request"
+// @Success 201 {object} httpx.SuccessResponse
+// @Failure 400 {object} httpx.ErrorResponse
+// @Failure 409 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /users/register [post]
 func (h *HTTPHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	var req registerReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -62,6 +74,16 @@ func (h *HTTPHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetCurrentUser handles GET /me
+// @Summary Get current user
+// @Description Get the authenticated user's information
+// @Tags users
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Success 200 {object} httpx.SuccessResponse
+// @Failure 401 {object} httpx.ErrorResponse
+// @Router /me [get]
 func (h *HTTPHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	userID := httpx.UserIDFrom(r)
 	if userID == "" {

@@ -19,6 +19,21 @@ type createRatingReq struct {
 	Star int `json:"star" validate:"required,min=1,max=5"`
 }
 
+// CreateRating handles POST /books/{isbn}/rating
+// @Summary Create or update book rating
+// @Description Rate a book (1-5 stars)
+// @Tags ratings
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param isbn path string true "Book ISBN"
+// @Param request body createRatingReq true "Rating request"
+// @Success 204 "No Content"
+// @Failure 400 {object} httpx.ErrorResponse
+// @Failure 401 {object} httpx.ErrorResponse
+// @Failure 404 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /books/{isbn}/rating [post]
 func (h *HTTPHandler) CreateRating(w http.ResponseWriter, r *http.Request) {
 	userID := httpx.UserIDFrom(r)
 	if userID == "" {
@@ -55,6 +70,17 @@ func (h *HTTPHandler) CreateRating(w http.ResponseWriter, r *http.Request) {
 	httpx.JSONSuccessNoContent(w)
 }
 
+// GetRating handles GET /books/{isbn}/rating
+// @Summary Get book rating
+// @Description Get average rating and total count for a book
+// @Tags ratings
+// @Accept json
+// @Produce json
+// @Param isbn path string true "Book ISBN"
+// @Success 200 {object} httpx.SuccessResponse
+// @Failure 400 {object} httpx.ErrorResponse
+// @Failure 500 {object} httpx.ErrorResponse
+// @Router /books/{isbn}/rating [get]
 func (h *HTTPHandler) GetRating(w http.ResponseWriter, r *http.Request) {
 	isbn := r.PathValue("isbn")
 	if isbn == "" {

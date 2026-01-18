@@ -1,3 +1,15 @@
+// @title Personal Book Tracking API
+// @version 1.0
+// @description A REST API for tracking books you've read, want to read, or are currently reading.
+// @termsOfService http://swagger.io/terms/
+// @contact.name API Support
+// @host localhost:8080
+// @basePath /
+// @schemes http https
+// @securityDefinitions.apikey Bearer
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
 package main
 
 import (
@@ -128,6 +140,9 @@ func main() {
 	// Ingest & Catalog
 	olClient := openlibrary.NewClient("BookAPI/1.0", cfg.IngestRPS, cfg.IngestMaxRetries)
 	catalogRepo := catalog.NewPostgresRepo(dbPool)
+	catalogService := catalog.NewService(catalogRepo)
+	catalogHandler := catalog.NewHTTPHandler(catalogService)
+
 	ingestRepo := ingest.NewPostgresRepo(dbPool)
 	ingestService := ingest.NewService(olClient, catalogRepo, ingestRepo, ingest.Config{
 		BooksMax:      cfg.IngestBooksMax,
@@ -145,20 +160,8 @@ func main() {
 
 	// Infrastructure & Public
 	mux.HandleFunc("/swagger/", httpSwagger.WrapHandler)
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
-	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
-		defer cancel()
-		if err := dbPool.Ping(ctx); err != nil {
-			http.Error(w, "db not ready", http.StatusServiceUnavailable)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ready"))
-	})
+	mux.HandleFunc("GET /healthz", healthzHandler)
+	mux.HandleFunc("GET /readyz", readyzHandler(dbPool))
 
 	// Books
 	mux.HandleFunc("GET /books", bookHandler.List)
@@ -188,6 +191,10 @@ func main() {
 	mux.HandleFunc("GET /users/{id}/profile", profileHandler.GetPublicProfile)
 	mux.Handle("POST /users/readinglist", authMid(http.HandlerFunc(readingListHandler.AddOrUpdate)))
 	mux.HandleFunc("GET /users/{id}/{status}", readingListHandler.ListByStatus)
+
+	// Catalog
+	mux.HandleFunc("GET /v1/catalog/search", catalogHandler.Search)
+	mux.HandleFunc("GET /v1/catalog/books/{isbn}", catalogHandler.GetByISBN)
 
 	// Internal Jobs
 	mux.HandleFunc("POST /internal/jobs/ingest", ingestHandler.Ingest)
@@ -234,6 +241,41 @@ func mustGetEnv(key string) string {
 	}
 	log.Fatalf("missing required environment variable: %s", key)
 	return ""
+}
+
+// healthzHandler handles GET /healthz
+// @Summary Health check
+// @Description Simple health check endpoint
+// @Tags infrastructure
+// @Accept json
+// @Produce text/plain
+// @Success 200 {string} string "ok"
+// @Router /healthz [get]
+func healthzHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("ok"))
+}
+
+// readyzHandler handles GET /readyz
+// @Summary Readiness check
+// @Description Check if the service is ready (database connectivity)
+// @Tags infrastructure
+// @Accept json
+// @Produce text/plain
+// @Success 200 {string} string "ready"
+// @Failure 503 {string} string "db not ready"
+// @Router /readyz [get]
+func readyzHandler(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+		defer cancel()
+		if err := dbPool.Ping(ctx); err != nil {
+			http.Error(w, "db not ready", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ready"))
+	}
 }
 
 func mustOpenDB(dsn string) *pgxpool.Pool {

@@ -88,30 +88,45 @@ swag init -g cmd/api/main.go -o docs
 
 ## 📥 Catalog Ingestion (Open Library)
 
-The project includes an ingestion job to populate a local catalog with data from Open Library. This is designed to be triggered by an external cron job.
+The project includes an ingestion job to populate a local catalog with data from Open Library. Follow these steps to run it locally:
 
-### Triggering Manually
+### 1. Configure Environment Variables
+Ensure your `.env.local` has ingestion enabled and a secret set:
+```env
+INGEST_ENABLED=true
+INGEST_BOOKS_MAX=100
+INTERNAL_JOBS_SECRET=your-internal-cron-secret
+```
 
-You can trigger the ingestion process using `curl`. Replace `your-internal-cron-secret` with the value of your `INTERNAL_JOBS_SECRET` env var:
+### 2. Run the API Server
+Start the server if it's not already running:
+```bash
+go run ./cmd/api
+```
 
+### 3. Trigger Ingestion
+In a new terminal, use `curl` to trigger the job. Replace `your-internal-cron-secret` with your actual secret:
 ```bash
 curl -X POST http://localhost:8080/internal/jobs/ingest \
   -H "X-Internal-Secret: your-internal-cron-secret"
+```
+
+### 4. Check if it worked
+Verify the data has been persisted in your database:
+```sql
+-- Check if catalog_books is populated
+SELECT count(*) FROM catalog_books;
+
+-- Check the status of the latest ingestion run
+SELECT status, books_upserted, authors_upserted, error 
+FROM ingest_runs 
+ORDER BY started_at DESC LIMIT 1;
 ```
 
 ### Ingestion Features
 - **Incremental**: Only fetches what is needed to reach the target set in `INGEST_BOOKS_MAX`.
 - **Run History**: Tracks every ingestion run in `ingest_runs` for audit and comparison.
 - **Safe**: Implements rate limiting (1 req/s) and exponential backoff.
-
-### Verification Queries
-```sql
--- Check ingestion summary
-SELECT * FROM ingest_runs ORDER BY started_at DESC LIMIT 1;
-
--- See newly added books
-SELECT isbn13, title FROM catalog_books ORDER BY updated_at DESC LIMIT 10;
-```
 
 ## 📁 Project Structure
 
