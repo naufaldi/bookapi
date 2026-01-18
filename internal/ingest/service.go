@@ -42,7 +42,37 @@ func NewService(olClient OpenLibraryClient, catalogRepo catalog.Repository, inge
 	}
 }
 
-func (s *Service) Run(ctx context.Context) error {
+func (s *Service) Run(ctx context.Context) (err error) {
+	run := &Run{
+		Status:           "RUNNING",
+		ConfigBooksMax:   s.cfg.BooksMax,
+		ConfigAuthorsMax: s.cfg.AuthorsMax,
+		ConfigSubjects:   strings.Join(s.cfg.Subjects, ","),
+		StartedAt:        time.Now(),
+	}
+	runID, rErr := s.ingestRepo.CreateRun(ctx, run)
+	if rErr != nil {
+		return rErr
+	}
+	run.ID = runID
+
+	defer func() {
+		now := time.Now()
+		run.FinishedAt = &now
+		if err != nil && run.Error == "" {
+			run.Error = err.Error()
+		}
+
+		if run.Error != "" {
+			run.Status = "FAILED"
+		} else {
+			run.Status = "COMPLETED"
+		}
+		if updateErr := s.ingestRepo.UpdateRun(ctx, run); updateErr != nil {
+			log.Printf("Failed to update ingest run %s: %v", run.ID, updateErr)
+		}
+	}()
+
 	currentBooks, err := s.catalogRepo.GetTotalBooks(ctx)
 	if err != nil {
 		return err
@@ -59,32 +89,6 @@ func (s *Service) Run(ctx context.Context) error {
 		log.Println("Ingestion targets already met. Skipping.")
 		return nil
 	}
-
-	run := &Run{
-		Status:           "RUNNING",
-		ConfigBooksMax:   s.cfg.BooksMax,
-		ConfigAuthorsMax: s.cfg.AuthorsMax,
-		ConfigSubjects:   strings.Join(s.cfg.Subjects, ","),
-		StartedAt:        time.Now(),
-	}
-	runID, err := s.ingestRepo.CreateRun(ctx, run)
-	if err != nil {
-		return err
-	}
-	run.ID = runID
-
-	defer func() {
-		now := time.Now()
-		run.FinishedAt = &now
-		if run.Error != "" {
-			run.Status = "FAILED"
-		} else {
-			run.Status = "COMPLETED"
-		}
-		if err := s.ingestRepo.UpdateRun(ctx, run); err != nil {
-			log.Printf("Failed to update ingest run %s: %v", run.ID, err)
-		}
-	}()
 
 	authorKeysToFetch := make(map[string]bool)
 	processedISBNs := make(map[string]bool)

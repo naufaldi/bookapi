@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -115,6 +116,11 @@ func TestService_Run(t *testing.T) {
 
 		s := NewService(mOL, mCatalog, mIngest, cfg)
 
+		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-0", nil)
+		mIngest.On("UpdateRun", ctx, mock.MatchedBy(func(run *Run) bool {
+			return run.Status == "COMPLETED"
+		})).Return(nil)
+
 		mCatalog.On("GetTotalBooks", ctx).Return(10, nil)
 		mCatalog.On("GetTotalAuthors", ctx).Return(5, nil)
 
@@ -130,11 +136,13 @@ func TestService_Run(t *testing.T) {
 
 		s := NewService(mOL, mCatalog, mIngest, cfg)
 
+		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-1", nil)
+		mIngest.On("UpdateRun", ctx, mock.MatchedBy(func(run *Run) bool {
+			return run.Status == "COMPLETED"
+		})).Return(nil)
+
 		mCatalog.On("GetTotalBooks", ctx).Return(8, nil)   // Need 2
 		mCatalog.On("GetTotalAuthors", ctx).Return(4, nil) // Need 1
-
-		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-1", nil)
-		mIngest.On("UpdateRun", ctx, mock.Anything).Return(nil)
 
 		searchRes := &openlibrary.SearchResponse{
 			Docs: []struct {
@@ -189,11 +197,13 @@ func TestService_Run(t *testing.T) {
 
 		s := NewService(mOL, mCatalog, mIngest, cfg)
 
+		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-2", nil)
+		mIngest.On("UpdateRun", ctx, mock.MatchedBy(func(run *Run) bool {
+			return run.Status == "COMPLETED"
+		})).Return(nil)
+
 		mCatalog.On("GetTotalBooks", ctx).Return(9, nil)
 		mCatalog.On("GetTotalAuthors", ctx).Return(5, nil)
-
-		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-2", nil)
-		mIngest.On("UpdateRun", ctx, mock.Anything).Return(nil)
 
 		searchRes := &openlibrary.SearchResponse{
 			Docs: []struct {
@@ -225,11 +235,13 @@ func TestService_Run(t *testing.T) {
 
 		s := NewService(mOL, mCatalog, mIngest, cfg)
 
+		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-3", nil)
+		mIngest.On("UpdateRun", ctx, mock.MatchedBy(func(run *Run) bool {
+			return run.Status == "COMPLETED"
+		})).Return(nil)
+
 		mCatalog.On("GetTotalBooks", ctx).Return(8, nil)
 		mCatalog.On("GetTotalAuthors", ctx).Return(5, nil)
-
-		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-3", nil)
-		mIngest.On("UpdateRun", ctx, mock.Anything).Return(nil)
 
 		searchRes := &openlibrary.SearchResponse{
 			Docs: []struct {
@@ -260,5 +272,46 @@ func TestService_Run(t *testing.T) {
 		assert.NoError(t, err)
 
 		mOL.AssertNumberOfCalls(t, "GetBooksByISBN", 1)
+	})
+
+	t.Run("records failure if SearchBooks fails", func(t *testing.T) {
+		mOL := new(mockOLClient)
+		mCatalog := new(mockCatalogRepo)
+		mIngest := new(mockIngestRepo)
+
+		s := NewService(mOL, mCatalog, mIngest, cfg)
+
+		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-4", nil)
+		mIngest.On("UpdateRun", ctx, mock.MatchedBy(func(run *Run) bool {
+			return run.Status == "FAILED" && run.Error != ""
+		})).Return(nil)
+
+		mCatalog.On("GetTotalBooks", ctx).Return(8, nil)
+		mCatalog.On("GetTotalAuthors", ctx).Return(5, nil)
+
+		mOL.On("SearchBooks", ctx, "test", 4).Return(nil, fmt.Errorf("search error"))
+
+		err := s.Run(ctx)
+		assert.Error(t, err)
+		mIngest.AssertExpectations(t)
+	})
+
+	t.Run("records failure if GetTotalBooks fails", func(t *testing.T) {
+		mOL := new(mockOLClient)
+		mCatalog := new(mockCatalogRepo)
+		mIngest := new(mockIngestRepo)
+
+		s := NewService(mOL, mCatalog, mIngest, cfg)
+
+		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-5", nil)
+		mIngest.On("UpdateRun", ctx, mock.MatchedBy(func(run *Run) bool {
+			return run.Status == "FAILED" && run.Error != ""
+		})).Return(nil)
+
+		mCatalog.On("GetTotalBooks", ctx).Return(0, fmt.Errorf("db error"))
+
+		err := s.Run(ctx)
+		assert.Error(t, err)
+		mIngest.AssertExpectations(t)
 	})
 }
