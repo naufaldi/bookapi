@@ -10,6 +10,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.6
+	golang.org/x/time v0.14.0
 )
 
 require (
@@ -32,6 +33,7 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/swaggo/files v0.0.0-20220610200504-28940afbdbfe // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/mod v0.31.0 // indirect

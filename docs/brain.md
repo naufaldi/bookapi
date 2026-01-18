@@ -751,3 +751,172 @@ By building this database-first API, you'll learn:
 6. **Start with Phase 1** - Authentication enhancements
 
 **Let me know when you're ready to proceed, and I'll create the detailed RFC and implementation plan! 🚀**
+
+
+Update Docs:
+
+Choice: do Approach 1 (production readiness) + add Catalog (Open Library) with on-demand fetch + cache
+
+Reason: VPS + Docker needs reliability/observability first; Open Library integration fits naturally as a capability boost without forcing async workers yet.
+
+What to do (ordered, and what to skip)
+Phase 0 (today): Docker + runtime hygiene
+
+Graceful shutdown (must)
+
+Add SIGTERM/SIGINT handling and httpServer.Shutdown.
+
+Why: Docker stop sends SIGTERM; without this you cut requests.
+
+Harden HTTP server (must)
+
+Add ReadHeaderTimeout and MaxHeaderBytes.
+
+Why: cheap protection against slowloris and header abuse.
+
+Config struct + validation (must)
+
+Replace scattered getEnv/mustGetEnv with Config{} and Validate().
+
+Why: one place to reason about prod settings.
+
+Skip for now: router migration, async jobs.
+
+Phase 1: Observability baseline (must before “prod”)
+
+Request ID middleware (must)
+
+Set/propagate X-Request-Id.
+
+Log it and include in error responses.
+
+Access log middleware (must)
+
+Log: method, path, status, duration_ms, request_id, user_id (if present).
+
+Panic recovery middleware (must)
+
+Return JSON 500 with request_id.
+
+/metrics (recommended)
+
+Prometheus endpoint inside container.
+
+Minimal metrics: request count, latency histogram, error count.
+
+Skip for now: full OpenTelemetry tracing (too heavy early).
+
+Phase 2: API contract + correctness (must)
+
+API versioning /v1 (must)
+
+Add /v1 prefix and keep old routes temporarily as redirects if needed.
+
+Standard response envelope + error model (must)
+
+{"data":...} and {"data":[...], "meta":...}
+
+Error: {"error":{"code":"...","message":"...","fields":{...},"request_id":"..."}}
+
+Validation layer (must)
+
+Validate: ISBN, rating bounds, pagination params, enums.
+
+Return 400 with field errors.
+
+Idempotent reading list (recommended)
+
+New endpoints:
+
+PUT /v1/me/reading-list/{isbn} (status)
+
+DELETE /v1/me/reading-list/{isbn}
+
+Keep your current POST endpoints for backward compat, but mark deprecated.
+
+Skip for now: building a full “admin” surface.
+
+Phase 3: Swagger that’s actually useful (must)
+
+DTO structs for every request/response (must)
+
+Stop documenting “loose JSON”.
+
+Per-handler swagger annotations (must)
+
+@Summary @Tags @Param @Success @Failure @Security
+
+Add examples for common errors.
+
+Swagger build in CI (recommended)
+
+Fails if swagger is stale.
+
+Skip for now: generating SDKs; do later when contract stable.
+
+Phase 4: Data layer hardening (must)
+
+Context timeouts for DB calls (must)
+
+Every repo method takes ctx.
+
+Add query timeouts (via context).
+
+pgxpool tuning (recommended)
+
+Set MaxConns/IdleTime based on VPS size.
+
+Migrations (must)
+
+Use goose (simple) and run on container start (or entrypoint).
+
+Indexes (must)
+
+Ensure indexes for:
+
+users(email)
+
+sessions(user_id)
+
+reading_list(user_id, status)
+
+ratings(user_id, isbn)
+
+catalog_books(isbn13) (later)
+
+Capability boost (Open Library) chosen design
+Phase 5: Catalog + Open Library (do after phases 0–4)
+
+Add catalog tables (must)
+
+catalog_books(isbn13 pk, title, subtitle, description, cover_url, published_date, languages, updated_at)
+
+catalog_sources(isbn13, provider, raw_json, fetched_at)
+
+Provider client (must)
+
+Implement Open Library client with:
+
+request timeout
+
+retries (small)
+
+user-agent header
+
+On-demand fetch + cache (chosen)
+
+New endpoint:
+
+GET /v1/catalog/books/{isbn}
+
+Behavior:
+
+If exists and fresh -> return DB
+
+If missing or stale -> fetch Open Library -> upsert -> return
+
+Optional auto-enrich existing /books/{isbn}
+
+If your /books is “static list” today, keep it.
+
+If /books/{isbn} means “get details”, make it read from catalog first.
