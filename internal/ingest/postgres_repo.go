@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -14,11 +15,16 @@ type Repository interface {
 }
 
 type PostgresRepo struct {
-	db *pgxpool.Pool
+	db      *pgxpool.Pool
+	timeout time.Duration
 }
 
-func NewPostgresRepo(db *pgxpool.Pool) *PostgresRepo {
-	return &PostgresRepo{db: db}
+func NewPostgresRepo(db *pgxpool.Pool, timeout time.Duration) *PostgresRepo {
+	return &PostgresRepo{db: db, timeout: timeout}
+}
+
+func (r *PostgresRepo) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, r.timeout)
 }
 
 func (r *PostgresRepo) CreateRun(ctx context.Context, run *Run) (string, error) {
@@ -28,7 +34,9 @@ func (r *PostgresRepo) CreateRun(ctx context.Context, run *Run) (string, error) 
 		RETURNING id`
 
 	var id string
-	err := r.db.QueryRow(ctx, sql, run.ConfigBooksMax, run.ConfigAuthorsMax, run.ConfigSubjects, run.Status).Scan(&id)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	err := r.db.QueryRow(timeoutCtx, sql, run.ConfigBooksMax, run.ConfigAuthorsMax, run.ConfigSubjects, run.Status).Scan(&id)
 	return id, err
 }
 
@@ -44,7 +52,9 @@ func (r *PostgresRepo) UpdateRun(ctx context.Context, run *Run) error {
 			error = $7
 		WHERE id = $8`
 
-	_, err := r.db.Exec(ctx, sql, run.FinishedAt, run.Status, run.BooksFetched, run.BooksUpserted, run.AuthorsFetched, run.AuthorsUpserted, run.Error, run.ID)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	_, err := r.db.Exec(timeoutCtx, sql, run.FinishedAt, run.Status, run.BooksFetched, run.BooksUpserted, run.AuthorsFetched, run.AuthorsUpserted, run.Error, run.ID)
 	return err
 }
 
@@ -53,7 +63,9 @@ func (r *PostgresRepo) LinkBookToRun(ctx context.Context, runID string, isbn13 s
 		INSERT INTO ingest_run_books (run_id, isbn13)
 		VALUES ($1, $2)
 		ON CONFLICT DO NOTHING`
-	_, err := r.db.Exec(ctx, sql, runID, isbn13)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	_, err := r.db.Exec(timeoutCtx, sql, runID, isbn13)
 	return err
 }
 
@@ -62,6 +74,8 @@ func (r *PostgresRepo) LinkAuthorToRun(ctx context.Context, runID string, author
 		INSERT INTO ingest_run_authors (run_id, author_key)
 		VALUES ($1, $2)
 		ON CONFLICT DO NOTHING`
-	_, err := r.db.Exec(ctx, sql, runID, authorKey)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	_, err := r.db.Exec(timeoutCtx, sql, runID, authorKey)
 	return err
 }

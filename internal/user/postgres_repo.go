@@ -5,17 +5,23 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PostgresRepo struct {
-	db *pgxpool.Pool
+	db      *pgxpool.Pool
+	timeout time.Duration
 }
 
-func NewPostgresRepo(db *pgxpool.Pool) *PostgresRepo {
-	return &PostgresRepo{db: db}
+func NewPostgresRepo(db *pgxpool.Pool, timeout time.Duration) *PostgresRepo {
+	return &PostgresRepo{db: db, timeout: timeout}
+}
+
+func (r *PostgresRepo) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, r.timeout)
 }
 
 func (r *PostgresRepo) Create(ctx context.Context, user *User) error {
@@ -24,7 +30,9 @@ func (r *PostgresRepo) Create(ctx context.Context, user *User) error {
 	VALUES (gen_random_uuid(), $1, $2, $3, COALESCE($4, 'USER'), COALESCE($5, true))
 	RETURNING id, role, is_public, created_at, updated_at
 	`
-	return r.db.QueryRow(ctx, query, user.Email, user.Username, user.Password, user.Role, user.IsPublic).Scan(&user.ID, &user.Role, &user.IsPublic, &user.CreatedAt, &user.UpdatedAt)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	return r.db.QueryRow(timeoutCtx, query, user.Email, user.Username, user.Password, user.Role, user.IsPublic).Scan(&user.ID, &user.Role, &user.IsPublic, &user.CreatedAt, &user.UpdatedAt)
 }
 
 func (r *PostgresRepo) GetByEmail(ctx context.Context, email string) (User, error) {
@@ -36,7 +44,9 @@ func (r *PostgresRepo) GetByEmail(ctx context.Context, email string) (User, erro
 	`
 	var user User
 	var readingPrefs []byte
-	err := r.db.QueryRow(ctx, query, email).Scan(
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	err := r.db.QueryRow(timeoutCtx, query, email).Scan(
 		&user.ID, &user.Email, &user.Username, &user.Password, &user.Role,
 		&user.Bio, &user.Location, &user.Website, &user.IsPublic,
 		&readingPrefs, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt,
@@ -60,7 +70,9 @@ func (r *PostgresRepo) GetByID(ctx context.Context, id string) (User, error) {
 	`
 	var user User
 	var readingPrefs []byte
-	err := r.db.QueryRow(ctx, query, id).Scan(
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	err := r.db.QueryRow(timeoutCtx, query, id).Scan(
 		&user.ID, &user.Email, &user.Username, &user.Password, &user.Role,
 		&user.Bio, &user.Location, &user.Website, &user.IsPublic,
 		&readingPrefs, &user.LastLoginAt,
@@ -85,7 +97,9 @@ func (r *PostgresRepo) GetPublicProfile(ctx context.Context, id string) (User, e
 	`
 	var user User
 	var readingPrefs []byte
-	err := r.db.QueryRow(ctx, query, id).Scan(
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	err := r.db.QueryRow(timeoutCtx, query, id).Scan(
 		&user.ID, &user.Username, &user.Bio, &user.Location, &user.Website,
 		&user.IsPublic, &readingPrefs, &user.CreatedAt,
 	)
@@ -123,6 +137,8 @@ func (r *PostgresRepo) UpdateProfile(ctx context.Context, userID string, updates
 	args = append(args, userID)
 
 	query := "UPDATE users SET " + strings.Join(fields, ", ") + " WHERE id = $" + strconv.Itoa(argn)
-	_, err := r.db.Exec(ctx, query, args...)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	_, err := r.db.Exec(timeoutCtx, query, args...)
 	return err
 }

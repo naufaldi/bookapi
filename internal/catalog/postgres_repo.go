@@ -23,15 +23,22 @@ type Repository interface {
 }
 
 type PostgresRepo struct {
-	db *pgxpool.Pool
+	db      *pgxpool.Pool
+	timeout time.Duration
 }
 
-func NewPostgresRepo(db *pgxpool.Pool) *PostgresRepo {
-	return &PostgresRepo{db: db}
+func NewPostgresRepo(db *pgxpool.Pool, timeout time.Duration) *PostgresRepo {
+	return &PostgresRepo{db: db, timeout: timeout}
+}
+
+func (r *PostgresRepo) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, r.timeout)
 }
 
 func (r *PostgresRepo) UpsertBook(ctx context.Context, b *Book, rawJSON []byte) error {
-	tx, err := r.db.Begin(ctx)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	tx, err := r.db.Begin(timeoutCtx)
 	if err != nil {
 		return err
 	}
@@ -51,7 +58,7 @@ func (r *PostgresRepo) UpsertBook(ctx context.Context, b *Book, rawJSON []byte) 
 			page_count = EXCLUDED.page_count,
 			updated_at = now()`
 
-	_, err = tx.Exec(ctx, bookSQL, b.ISBN13, b.Title, b.Subtitle, b.Description, b.CoverURL, b.PublishedDate, b.Publisher, b.Language, b.PageCount)
+	_, err = tx.Exec(timeoutCtx, bookSQL, b.ISBN13, b.Title, b.Subtitle, b.Description, b.CoverURL, b.PublishedDate, b.Publisher, b.Language, b.PageCount)
 	if err != nil {
 		return fmt.Errorf("upsert book: %w", err)
 	}
@@ -63,20 +70,22 @@ func (r *PostgresRepo) UpsertBook(ctx context.Context, b *Book, rawJSON []byte) 
 			raw_json = EXCLUDED.raw_json,
 			fetched_at = now()`
 
-	_, err = tx.Exec(ctx, sourceSQL, b.ISBN13, rawJSON)
+	_, err = tx.Exec(timeoutCtx, sourceSQL, b.ISBN13, rawJSON)
 	if err != nil {
 		return fmt.Errorf("upsert book source: %w", err)
 	}
 
-	return tx.Commit(ctx)
+	return tx.Commit(timeoutCtx)
 }
 
 func (r *PostgresRepo) UpsertAuthor(ctx context.Context, a *Author, rawJSON []byte) error {
-	tx, err := r.db.Begin(ctx)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	tx, err := r.db.Begin(timeoutCtx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(timeoutCtx)
 
 	const authorSQL = `
 		INSERT INTO catalog_authors (key, name, birth_date, bio, updated_at)
@@ -87,7 +96,7 @@ func (r *PostgresRepo) UpsertAuthor(ctx context.Context, a *Author, rawJSON []by
 			bio = EXCLUDED.bio,
 			updated_at = now()`
 
-	_, err = tx.Exec(ctx, authorSQL, a.Key, a.Name, a.BirthDate, a.Bio)
+	_, err = tx.Exec(timeoutCtx, authorSQL, a.Key, a.Name, a.BirthDate, a.Bio)
 	if err != nil {
 		return fmt.Errorf("upsert author: %w", err)
 	}
@@ -99,29 +108,35 @@ func (r *PostgresRepo) UpsertAuthor(ctx context.Context, a *Author, rawJSON []by
 			raw_json = EXCLUDED.raw_json,
 			fetched_at = now()`
 
-	_, err = tx.Exec(ctx, sourceSQL, a.Key, rawJSON)
+	_, err = tx.Exec(timeoutCtx, sourceSQL, a.Key, rawJSON)
 	if err != nil {
 		return fmt.Errorf("upsert author source: %w", err)
 	}
 
-	return tx.Commit(ctx)
+	return tx.Commit(timeoutCtx)
 }
 
 func (r *PostgresRepo) GetTotalBooks(ctx context.Context) (int, error) {
 	var count int
-	err := r.db.QueryRow(ctx, "SELECT COUNT(*) FROM catalog_books").Scan(&count)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	err := r.db.QueryRow(timeoutCtx, "SELECT COUNT(*) FROM catalog_books").Scan(&count)
 	return count, err
 }
 
 func (r *PostgresRepo) GetTotalAuthors(ctx context.Context) (int, error) {
 	var count int
-	err := r.db.QueryRow(ctx, "SELECT COUNT(*) FROM catalog_authors").Scan(&count)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	err := r.db.QueryRow(timeoutCtx, "SELECT COUNT(*) FROM catalog_authors").Scan(&count)
 	return count, err
 }
 
 func (r *PostgresRepo) GetBookUpdatedAt(ctx context.Context, isbn13 string) (time.Time, error) {
 	var t time.Time
-	err := r.db.QueryRow(ctx, "SELECT updated_at FROM catalog_books WHERE isbn13 = $1", isbn13).Scan(&t)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	err := r.db.QueryRow(timeoutCtx, "SELECT updated_at FROM catalog_books WHERE isbn13 = $1", isbn13).Scan(&t)
 	if err == pgx.ErrNoRows {
 		return time.Time{}, nil
 	}
@@ -130,7 +145,9 @@ func (r *PostgresRepo) GetBookUpdatedAt(ctx context.Context, isbn13 string) (tim
 
 func (r *PostgresRepo) GetAuthorUpdatedAt(ctx context.Context, key string) (time.Time, error) {
 	var t time.Time
-	err := r.db.QueryRow(ctx, "SELECT updated_at FROM catalog_authors WHERE key = $1", key).Scan(&t)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	err := r.db.QueryRow(timeoutCtx, "SELECT updated_at FROM catalog_authors WHERE key = $1", key).Scan(&t)
 	if err == pgx.ErrNoRows {
 		return time.Time{}, nil
 	}
@@ -164,7 +181,9 @@ func (r *PostgresRepo) List(ctx context.Context, q SearchQuery) ([]Book, int, er
 
 	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM catalog_books %s", where)
 	var total int
-	if err := r.db.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	if err := r.db.QueryRow(timeoutCtx, countSQL, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
@@ -178,7 +197,9 @@ func (r *PostgresRepo) List(ctx context.Context, q SearchQuery) ([]Book, int, er
 
 	argsWithPage := append([]any{}, args...)
 	argsWithPage = append(argsWithPage, q.Limit, q.Offset)
-	rows, err := r.db.Query(ctx, dataSQL, argsWithPage...)
+	timeoutCtx2, cancel2 := r.withTimeout(ctx)
+	defer cancel2()
+	rows, err := r.db.Query(timeoutCtx2, dataSQL, argsWithPage...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -205,7 +226,9 @@ func (r *PostgresRepo) GetByISBN(ctx context.Context, isbn13 string) (Book, erro
 		WHERE isbn13 = $1
 	`
 	var b Book
-	err := r.db.QueryRow(ctx, query, isbn13).Scan(
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	err := r.db.QueryRow(timeoutCtx, query, isbn13).Scan(
 		&b.ISBN13, &b.Title, &b.Subtitle, &b.Description, &b.CoverURL,
 		&b.PublishedDate, &b.Publisher, &b.Language, &b.PageCount, &b.UpdatedAt,
 	)

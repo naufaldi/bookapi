@@ -48,6 +48,7 @@ type Config struct {
 	JWTSecret      string
 	AllowedOrigins []string
 	MaxRequestSize int64
+	DBQueryTimeout time.Duration
 
 	// Ingest
 	IngestEnabled        bool
@@ -85,12 +86,20 @@ func loadConfig() Config {
 		subjects = strings.Split(s, ",")
 	}
 
+	dbQueryTimeout := 5 * time.Second
+	if timeoutStr := os.Getenv("DB_QUERY_TIMEOUT"); timeoutStr != "" {
+		if timeout, err := time.ParseDuration(timeoutStr); err == nil {
+			dbQueryTimeout = timeout
+		}
+	}
+
 	return Config{
 		AppAddr:        getEnv("APP_ADDR", ":8080"),
 		DBDSN:          getEnv("DB_DSN", "postgres://postgres:postgres@localhost:5432/booklibrary"),
 		JWTSecret:      mustGetEnv("JWT_SECRET"),
 		AllowedOrigins: strings.Split(getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"), ","),
 		MaxRequestSize: maxRequestSize,
+		DBQueryTimeout: dbQueryTimeout,
 
 		IngestEnabled:        getEnv("INGEST_ENABLED", "false") == "true",
 		IngestBooksMax:       getEnvInt("INGEST_BOOKS_MAX", 100),
@@ -112,27 +121,27 @@ func main() {
 	defer dbPool.Close()
 
 	// 1. Setup Modules (Repositories & Services)
-	bookRepo := book.NewPostgresRepo(dbPool)
+	bookRepo := book.NewPostgresRepo(dbPool, cfg.DBQueryTimeout)
 	bookService := book.NewService(bookRepo)
 	bookHandler := book.NewHTTPHandler(bookService)
 
-	userRepo := user.NewPostgresRepo(dbPool)
+	userRepo := user.NewPostgresRepo(dbPool, cfg.DBQueryTimeout)
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHTTPHandler(userService)
 
-	sessionRepo := session.NewPostgresRepo(dbPool)
-	blacklistRepo := session.NewBlacklistPostgresRepo(dbPool)
+	sessionRepo := session.NewPostgresRepo(dbPool, cfg.DBQueryTimeout)
+	blacklistRepo := session.NewBlacklistPostgresRepo(dbPool, cfg.DBQueryTimeout)
 	sessionService := session.NewService(sessionRepo, blacklistRepo)
 	sessionHandler := session.NewHTTPHandler(sessionService)
 
 	authService := auth.NewService(cfg.JWTSecret, userService, sessionService)
 	authHandler := auth.NewHTTPHandler(authService)
 
-	ratingRepo := rating.NewPostgresRepo(dbPool)
+	ratingRepo := rating.NewPostgresRepo(dbPool, cfg.DBQueryTimeout)
 	ratingService := rating.NewService(ratingRepo)
 	ratingHandler := rating.NewHTTPHandler(ratingService)
 
-	readingListRepo := readinglist.NewPostgresRepo(dbPool)
+	readingListRepo := readinglist.NewPostgresRepo(dbPool, cfg.DBQueryTimeout)
 	readingListService := readinglist.NewService(readingListRepo)
 	readingListHandler := readinglist.NewHTTPHandler(readingListService)
 
@@ -141,9 +150,10 @@ func main() {
 
 	// Ingest & Catalog
 	olClient := openlibrary.NewClient("BookAPI/1.0", cfg.IngestRPS, cfg.IngestMaxRetries)
-	catalogRepo := catalog.NewPostgresRepo(dbPool)
+	catalogRepo := catalog.NewPostgresRepo(dbPool, cfg.DBQueryTimeout)
+	catalogService := catalog.NewService(catalogRepo)
 
-	ingestRepo := ingest.NewPostgresRepo(dbPool)
+	ingestRepo := ingest.NewPostgresRepo(dbPool, cfg.DBQueryTimeout)
 	ingestService := ingest.NewService(olClient, catalogRepo, bookRepo, ingestRepo, ingest.Config{
 		BooksMax:      cfg.IngestBooksMax,
 		AuthorsMax:    cfg.IngestAuthorsMax,
@@ -158,42 +168,48 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Infrastructure & Public
+	// Infrastructure & Public (not versioned)
 	mux.HandleFunc("/swagger/", httpSwagger.WrapHandler)
 	mux.HandleFunc("GET /healthz", healthzHandler)
 	mux.HandleFunc("GET /readyz", readyzHandler(dbPool))
 
+	// v1 API Router
+	v1 := http.NewServeMux()
+
 	// Books
-	mux.HandleFunc("GET /books", bookHandler.List)
-	mux.HandleFunc("GET /books/{isbn}", bookHandler.GetByISBN)
-	mux.HandleFunc("GET /books/{isbn}/rating", ratingHandler.GetRating)
-	mux.Handle("POST /books/{isbn}/rating", authMid(http.HandlerFunc(ratingHandler.CreateRating)))
+	v1.HandleFunc("GET /books", bookHandler.List)
+	v1.HandleFunc("GET /books/{isbn}", bookHandler.GetByISBN)
+	v1.HandleFunc("GET /books/{isbn}/rating", ratingHandler.GetRating)
+	v1.Handle("POST /books/{isbn}/rating", authMid(http.HandlerFunc(ratingHandler.CreateRating)))
 
 	// Auth & Users
-	mux.HandleFunc("POST /users/register", userHandler.RegisterUser)
-	mux.HandleFunc("POST /users/login", authHandler.Login)
-	mux.HandleFunc("POST /auth/refresh", authHandler.RefreshToken)
-	mux.Handle("POST /auth/logout", authMid(http.HandlerFunc(authHandler.Logout)))
+	v1.HandleFunc("POST /users/register", userHandler.RegisterUser)
+	v1.HandleFunc("POST /users/login", authHandler.Login)
+	v1.HandleFunc("POST /auth/refresh", authHandler.RefreshToken)
+	v1.Handle("POST /auth/logout", authMid(http.HandlerFunc(authHandler.Logout)))
 
 	// Me
-	mux.Handle("GET /me", authMid(http.HandlerFunc(userHandler.GetCurrentUser)))
-	mux.Handle("GET /me/profile", authMid(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPatch {
-			profileHandler.UpdateProfile(w, r)
-			return
-		}
-		profileHandler.GetOwnProfile(w, r)
-	})))
-	mux.Handle("GET /me/sessions", authMid(http.HandlerFunc(sessionHandler.ListSessions)))
-	mux.Handle("DELETE /me/sessions/{id}", authMid(http.HandlerFunc(sessionHandler.DeleteSession)))
+	v1.Handle("GET /me", authMid(http.HandlerFunc(userHandler.GetCurrentUser)))
+	v1.Handle("GET /me/profile", authMid(http.HandlerFunc(profileHandler.GetOwnProfile)))
+	v1.Handle("PATCH /me/profile", authMid(http.HandlerFunc(profileHandler.UpdateProfile)))
+	v1.Handle("GET /me/sessions", authMid(http.HandlerFunc(sessionHandler.ListSessions)))
+	v1.Handle("DELETE /me/sessions/{id}", authMid(http.HandlerFunc(sessionHandler.DeleteSession)))
 
 	// Users & Reading Lists
-	mux.HandleFunc("GET /users/{id}/profile", profileHandler.GetPublicProfile)
-	mux.Handle("POST /users/readinglist", authMid(http.HandlerFunc(readingListHandler.AddOrUpdate)))
-	mux.HandleFunc("GET /users/{id}/{status}", readingListHandler.ListByStatus)
+	v1.HandleFunc("GET /users/{id}/profile", profileHandler.GetPublicProfile)
+	v1.Handle("POST /users/readinglist", authMid(http.HandlerFunc(readingListHandler.AddOrUpdate)))
+	v1.HandleFunc("GET /users/{id}/{status}", readingListHandler.ListByStatus)
+
+	// Catalog
+	catalogHandler := catalog.NewHTTPHandler(catalogService)
+	v1.HandleFunc("GET /catalog/search", catalogHandler.Search)
+	v1.HandleFunc("GET /catalog/books/{isbn}", catalogHandler.GetByISBN)
 
 	// Internal Jobs
-	mux.HandleFunc("POST /internal/jobs/ingest", ingestHandler.Ingest)
+	v1.HandleFunc("POST /internal/jobs/ingest", ingestHandler.Ingest)
+
+	// Mount v1 router
+	mux.Handle("/v1/", http.StripPrefix("/v1", v1))
 
 	// Global Middlewares (order matters: request_id -> recovery -> access_log -> existing)
 	var handler http.Handler = mux
