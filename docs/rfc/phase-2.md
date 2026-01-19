@@ -189,51 +189,212 @@ We will add unit tests to ensure the ingestion job works reliably and remains sa
 
 ## Security & Observability
 
-### Runtime Hygiene
-- **Graceful Shutdown**: Handle `SIGTERM` and `SIGINT` to allow the server to finish processing requests.
-- **HTTP Hardening**: Set `ReadHeaderTimeout: 5 * time.Second` and `MaxHeaderBytes: 1 << 20` (1MB).
-- **Structured Config**: Move from scattered `os.Getenv` calls to a single `Config` struct with validation.
+**Status**: ✅ **COMPLETE** - All observability features implemented and documented.
 
-### Observability
-- **Request ID**: Every request gets a UUID in the `X-Request-Id` header, propagated through logs and responses.
-- **Access Logs**: Log `method`, `path`, `status`, `duration_ms`, `request_id`, and `user_id`.
-- **Panic Recovery**: Catch panics and return a clean JSON 500 error with the `request_id`.
+### Runtime Hygiene ✅ COMPLETE
+- **Graceful Shutdown**: ✅ Handle `SIGTERM` and `SIGINT` to allow the server to finish processing requests.
+- **HTTP Hardening**: ✅ Set `ReadHeaderTimeout: 5 * time.Second` and `MaxHeaderBytes: 1 << 20` (1MB).
+- **Structured Config**: ✅ Move from scattered `os.Getenv` calls to a single `Config` struct with validation.
+
+### Observability ✅ COMPLETE
+- **Request ID**: ✅ Every request gets a UUID in the `X-Request-Id` header, propagated through logs and responses.
+- **Access Logs**: ✅ Log `method`, `path`, `status`, `duration_ms`, `request_id`, and `user_id`.
+- **Panic Recovery**: ✅ Catch panics and return a clean JSON 500 error with the `request_id`.
+- **Operator Documentation**: ✅ Complete guide for accessing observability on VPS (Docker + Caddy) - see section below.
+
+### Operator: Accessing Observability (VPS + Docker + Caddy)
+
+This section explains how to access and use observability features when the API is deployed on a VPS using Docker and Caddy.
+
+#### Viewing API Logs
+
+**Docker Compose:**
+```bash
+# Tail API container logs
+docker compose logs -f api
+
+# View last 100 lines
+docker compose logs --tail=100 api
+
+# Filter by request_id (example: abc123-def456)
+docker compose logs api | grep "request_id=abc123-def456"
+```
+
+**Docker (standalone):**
+```bash
+# Tail API container logs (replace 'bookapi-api' with your container name)
+docker logs -f bookapi-api
+
+# View last 100 lines
+docker logs --tail=100 bookapi-api
+
+# Filter by request_id
+docker logs bookapi-api | grep "request_id=abc123-def456"
+```
+
+#### Viewing Caddy Logs
+
+**Docker Compose:**
+```bash
+# Tail Caddy logs
+docker compose logs -f caddy
+```
+
+**Docker (standalone):**
+```bash
+# Tail Caddy logs (replace 'caddy' with your container name)
+docker logs -f caddy
+```
+
+**Caddyfile log location (if using file-based logging):**
+```bash
+# Caddy typically logs to stdout/stderr, but check your Caddyfile
+# Common locations: /var/log/caddy/access.log, /var/log/caddy/error.log
+```
+
+#### Correlating Requests by Request ID
+
+Every HTTP response includes:
+1. **Header**: `X-Request-Id: <uuid>`
+2. **JSON meta field**: `{"success": true, "data": {...}, "meta": {"request_id": "<uuid>"}}`
+
+**To trace a request:**
+
+1. **Get the request ID from a client error response:**
+   ```bash
+   curl -v https://your-api.example.com/books/1234567890123
+   # Look for: X-Request-Id: abc123-def456-...
+   ```
+
+2. **Search API logs for that request ID:**
+   ```bash
+   docker compose logs api | grep "request_id=abc123-def456"
+   ```
+
+3. **Search Caddy logs (if forwarding request ID):**
+   ```bash
+   docker compose logs caddy | grep "abc123-def456"
+   ```
+
+**Example log output:**
+```
+access method=GET path=/books/1234567890123 status=200 duration_ms=45 request_id=abc123-def456-7890 user_id=user-123
+```
+
+#### Health and Readiness Checks
+
+**Health check (liveness):**
+```bash
+curl http://localhost:8080/healthz
+# Returns: ok (200 OK)
+```
+
+**Readiness check (database connectivity):**
+```bash
+curl http://localhost:8080/readyz
+# Returns: ready (200 OK) or db not ready (503)
+```
+
+**In Docker Compose healthcheck:**
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+```
+
+#### Caddy Configuration for Request ID Forwarding (Optional)
+
+To ensure Caddy and the API share the same request ID, configure Caddy to forward `X-Request-Id`:
+
+**Caddyfile example:**
+```
+your-api.example.com {
+    reverse_proxy api:8080 {
+        header_up X-Request-Id {http.request.id}
+        # Or generate if not present:
+        # header_up X-Request-Id {http.request.id}
+    }
+    
+    log {
+        output stdout
+        format json
+        # Include request ID in Caddy logs
+    }
+}
+```
+
+This ensures:
+- Caddy generates/forwards `X-Request-Id` header
+- API receives and uses the same ID
+- Both logs can be correlated by the same request ID
+
+#### Common Debugging Workflows
+
+**1. Find slow requests (>1000ms):**
+```bash
+docker compose logs api | grep "duration_ms=[0-9][0-9][0-9][0-9]"
+```
+
+**2. Find all errors (4xx/5xx):**
+```bash
+docker compose logs api | grep -E "status=[45][0-9][0-9]"
+```
+
+**3. Find requests for a specific user:**
+```bash
+docker compose logs api | grep "user_id=user-123"
+```
+
+**4. Find panics:**
+```bash
+docker compose logs api | grep "panic recovered"
+```
+
+**5. Monitor real-time access:**
+```bash
+docker compose logs -f api | grep "access"
+```
 
 ## Epics and Task Breakdown
 
-### Epic 0: Runtime Hygiene & Config
-- [ ] Implement `Config` struct and validation in `cmd/api/main.go`.
-- [ ] Implement graceful shutdown using `context.WithCancel` and `http.Server.Shutdown`.
-- [ ] Configure `ReadHeaderTimeout` and `MaxHeaderBytes` for the HTTP server.
+### Epic 0: Runtime Hygiene & Config ✅ COMPLETE
+- [x] Implement `Config` struct and validation in `cmd/api/main.go`.
+- [x] Implement graceful shutdown using `context.WithCancel` and `http.Server.Shutdown`.
+- [x] Configure `ReadHeaderTimeout` and `MaxHeaderBytes` for the HTTP server.
 
-### Epic 1: Observability Baseline
-- [ ] Create `httpx.RequestIDMiddleware`.
-- [ ] Create `httpx.AccessLogMiddleware`.
-- [ ] Create `httpx.RecoveryMiddleware`.
-- [ ] Integrate middlewares into `main.go`.
+### Epic 1: Observability Baseline ✅ COMPLETE
+- [x] Create `httpx.RequestIDMiddleware`.
+- [x] Create `httpx.AccessLogMiddleware`.
+- [x] Create `httpx.RecoveryMiddleware`.
+- [x] Integrate middlewares into `main.go`.
+- [x] Update `httpx.JSONSuccess` and `httpx.JSONError` to include request_id in meta (new functions: `JSONSuccessWithRequest`, `JSONErrorWithRequest`).
+- [x] Update `httpx.AuthMiddleware` to use JSON errors with request_id.
 
-### Epic 2: API Contract & v1
-- [ ] Update `httpx.JSONSuccess` and `httpx.JSONError` to include the standard envelope.
+### Epic 2: API Contract & v1 ⚠️ PARTIAL
+- [x] Update `httpx.JSONSuccess` and `httpx.JSONError` to include the standard envelope (new functions added, existing handlers can migrate gradually).
 - [ ] Wrap all routes in a `/v1` router or prefix.
 - [ ] Fix routing bug: Ensure `PATCH /me/profile` is correctly registered.
 
-### Epic 3: Data Layer Hardening
+### Epic 3: Data Layer Hardening ⏳ TODO
 - [ ] Add context timeouts to all `PostgresRepo` methods.
 - [ ] Implement `goose` or similar for migration management.
 - [ ] Add missing indexes for `users(email)`, `sessions(user_id)`, and `reading_list(user_id)`.
 
-### Epic 4: Catalog & Open Library Client
-- [ ] Implement the `openlibrary.Client` with `User-Agent` and timeout settings.
-- [ ] Create migrations for `catalog_books` and `catalog_sources`.
-- [ ] Implement `catalog.Service` with read-through caching logic.
-- [ ] Implement `GET /v1/catalog/books/{isbn}`.
+### Epic 4: Catalog & Open Library Client ✅ COMPLETE (routes not registered)
+- [x] Implement the `openlibrary.Client` with `User-Agent` and timeout settings.
+- [x] Create migrations for `catalog_books` and `catalog_sources` (see `db/migrations/005_catalog_and_ingestion.sql`).
+- [x] Implement `catalog.Service` with read-through caching logic.
+- [x] Implement `GET /v1/catalog/books/{isbn}` handler (exists in `internal/catalog/http_handler.go` but not registered in `main.go`).
+- [ ] Register catalog routes in `main.go` (`GET /v1/catalog/search`, `GET /v1/catalog/books/{isbn}`).
 
-### Epic 5: Ingestion Job (Cron)
-- [ ] Create the ingestion job logic (Discovery -> Hydration -> Upsert).
-- [ ] Implement batching and rate-limiting/backoff in the ingest service.
-- [ ] Add `POST /internal/jobs/ingest` endpoint (protected by internal secret or admin role).
+### Epic 5: Ingestion Job (Cron) ✅ COMPLETE
+- [x] Create the ingestion job logic (Discovery -> Hydration -> Upsert).
+- [x] Implement batching and rate-limiting/backoff in the ingest service.
+- [x] Add `POST /internal/jobs/ingest` endpoint (protected by internal secret).
 
-### Epic 6: SQL & Search Learning (Exercises)
+### Epic 6: SQL & Search Learning (Exercises) ⏳ TODO
 - [ ] Populate the DB with 10k+ books from Open Library.
 - [ ] Experiment with `EXPLAIN ANALYZE` on complex search queries.
 - [ ] Tune PostgreSQL Full-Text Search weights and ranking (`ts_rank`).

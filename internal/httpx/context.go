@@ -8,8 +8,9 @@ import (
 type contextKey string
 
 const (
-	userIDKey contextKey = "userID"
-	roleKey   contextKey = "role"
+	userIDKey    contextKey = "userID"
+	roleKey      contextKey = "role"
+	requestIDKey contextKey = "requestID"
 )
 
 // UserIDFrom retrieves the user ID from the request context.

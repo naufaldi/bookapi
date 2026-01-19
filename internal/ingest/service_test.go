@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"bookapi/internal/book"
 	"bookapi/internal/catalog"
 	"bookapi/internal/platform/openlibrary"
 
@@ -75,6 +76,24 @@ func (m *mockCatalogRepo) GetAuthorUpdatedAt(ctx context.Context, key string) (t
 	return args.Get(0).(time.Time), args.Error(1)
 }
 
+func (m *mockCatalogRepo) List(ctx context.Context, q catalog.SearchQuery) ([]catalog.Book, int, error) {
+	args := m.Called(ctx, q)
+	var books []catalog.Book
+	if args.Get(0) != nil {
+		books = args.Get(0).([]catalog.Book)
+	}
+	return books, args.Int(1), args.Error(2)
+}
+
+func (m *mockCatalogRepo) GetByISBN(ctx context.Context, isbn13 string) (catalog.Book, error) {
+	args := m.Called(ctx, isbn13)
+	var b catalog.Book
+	if args.Get(0) != nil {
+		b = args.Get(0).(catalog.Book)
+	}
+	return b, args.Error(1)
+}
+
 type mockIngestRepo struct {
 	mock.Mock
 }
@@ -99,6 +118,33 @@ func (m *mockIngestRepo) LinkAuthorToRun(ctx context.Context, runID string, auth
 	return args.Error(0)
 }
 
+type mockBookRepo struct {
+	mock.Mock
+}
+
+func (m *mockBookRepo) List(ctx context.Context, q book.Query) ([]book.Book, int, error) {
+	args := m.Called(ctx, q)
+	var books []book.Book
+	if args.Get(0) != nil {
+		books = args.Get(0).([]book.Book)
+	}
+	return books, args.Int(1), args.Error(2)
+}
+
+func (m *mockBookRepo) GetByISBN(ctx context.Context, isbn string) (book.Book, error) {
+	args := m.Called(ctx, isbn)
+	var b book.Book
+	if args.Get(0) != nil {
+		b = args.Get(0).(book.Book)
+	}
+	return b, args.Error(1)
+}
+
+func (m *mockBookRepo) UpsertFromIngest(ctx context.Context, b *book.Book) error {
+	args := m.Called(ctx, b)
+	return args.Error(0)
+}
+
 func TestService_Run(t *testing.T) {
 	ctx := context.Background()
 	cfg := Config{
@@ -112,9 +158,10 @@ func TestService_Run(t *testing.T) {
 	t.Run("incremental target reached", func(t *testing.T) {
 		mOL := new(mockOLClient)
 		mCatalog := new(mockCatalogRepo)
+		mBook := new(mockBookRepo)
 		mIngest := new(mockIngestRepo)
 
-		s := NewService(mOL, mCatalog, mIngest, cfg)
+		s := NewService(mOL, mCatalog, mBook, mIngest, cfg)
 
 		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-0", nil)
 		mIngest.On("UpdateRun", ctx, mock.MatchedBy(func(run *Run) bool {
@@ -132,9 +179,10 @@ func TestService_Run(t *testing.T) {
 	t.Run("fetches missing books and authors", func(t *testing.T) {
 		mOL := new(mockOLClient)
 		mCatalog := new(mockCatalogRepo)
+		mBook := new(mockBookRepo)
 		mIngest := new(mockIngestRepo)
 
-		s := NewService(mOL, mCatalog, mIngest, cfg)
+		s := NewService(mOL, mCatalog, mBook, mIngest, cfg)
 
 		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-1", nil)
 		mIngest.On("UpdateRun", ctx, mock.MatchedBy(func(run *Run) bool {
@@ -175,6 +223,7 @@ func TestService_Run(t *testing.T) {
 		}, nil)
 
 		mCatalog.On("UpsertBook", ctx, mock.Anything, mock.Anything).Return(nil).Twice()
+		mBook.On("UpsertFromIngest", ctx, mock.Anything).Return(nil).Twice()
 		mIngest.On("LinkBookToRun", ctx, "run-1", mock.Anything).Return(nil).Twice()
 
 		mCatalog.On("GetAuthorUpdatedAt", ctx, "auth1").Return(time.Time{}, nil)
@@ -193,9 +242,10 @@ func TestService_Run(t *testing.T) {
 	t.Run("skips recently updated books", func(t *testing.T) {
 		mOL := new(mockOLClient)
 		mCatalog := new(mockCatalogRepo)
+		mBook := new(mockBookRepo)
 		mIngest := new(mockIngestRepo)
 
-		s := NewService(mOL, mCatalog, mIngest, cfg)
+		s := NewService(mOL, mCatalog, mBook, mIngest, cfg)
 
 		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-2", nil)
 		mIngest.On("UpdateRun", ctx, mock.MatchedBy(func(run *Run) bool {
@@ -231,9 +281,10 @@ func TestService_Run(t *testing.T) {
 	t.Run("deduplicates ISBNs within a run", func(t *testing.T) {
 		mOL := new(mockOLClient)
 		mCatalog := new(mockCatalogRepo)
+		mBook := new(mockBookRepo)
 		mIngest := new(mockIngestRepo)
 
-		s := NewService(mOL, mCatalog, mIngest, cfg)
+		s := NewService(mOL, mCatalog, mBook, mIngest, cfg)
 
 		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-3", nil)
 		mIngest.On("UpdateRun", ctx, mock.MatchedBy(func(run *Run) bool {
@@ -266,6 +317,7 @@ func TestService_Run(t *testing.T) {
 		}, nil)
 
 		mCatalog.On("UpsertBook", ctx, mock.Anything, mock.Anything).Return(nil)
+		mBook.On("UpsertFromIngest", ctx, mock.Anything).Return(nil)
 		mIngest.On("LinkBookToRun", ctx, "run-3", "isbn_dup").Return(nil)
 
 		err := s.Run(ctx)
@@ -277,9 +329,10 @@ func TestService_Run(t *testing.T) {
 	t.Run("records failure if SearchBooks fails", func(t *testing.T) {
 		mOL := new(mockOLClient)
 		mCatalog := new(mockCatalogRepo)
+		mBook := new(mockBookRepo)
 		mIngest := new(mockIngestRepo)
 
-		s := NewService(mOL, mCatalog, mIngest, cfg)
+		s := NewService(mOL, mCatalog, mBook, mIngest, cfg)
 
 		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-4", nil)
 		mIngest.On("UpdateRun", ctx, mock.MatchedBy(func(run *Run) bool {
@@ -299,9 +352,10 @@ func TestService_Run(t *testing.T) {
 	t.Run("records failure if GetTotalBooks fails", func(t *testing.T) {
 		mOL := new(mockOLClient)
 		mCatalog := new(mockCatalogRepo)
+		mBook := new(mockBookRepo)
 		mIngest := new(mockIngestRepo)
 
-		s := NewService(mOL, mCatalog, mIngest, cfg)
+		s := NewService(mOL, mCatalog, mBook, mIngest, cfg)
 
 		mIngest.On("CreateRun", ctx, mock.Anything).Return("run-5", nil)
 		mIngest.On("UpdateRun", ctx, mock.MatchedBy(func(run *Run) bool {

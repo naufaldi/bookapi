@@ -64,3 +64,17 @@ func (mr *MockRepositoryMockRecorder) List(ctx, q interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockRepository)(nil).List), ctx, q)
 }
+
+// UpsertFromIngest mocks base method.
+func (m *MockRepository) UpsertFromIngest(ctx context.Context, book *Book) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertFromIngest", ctx, book)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertFromIngest indicates an expected call of UpsertFromIngest.
+func (mr *MockRepositoryMockRecorder) UpsertFromIngest(ctx, book interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertFromIngest", reflect.TypeOf((*MockRepository)(nil).UpsertFromIngest), ctx, book)
+}

@@ -17,8 +17,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"bookapi/internal/auth"
@@ -193,24 +195,55 @@ func main() {
 	// Internal Jobs
 	mux.HandleFunc("POST /internal/jobs/ingest", ingestHandler.Ingest)
 
-	// Global Middlewares
+	// Global Middlewares (order matters: request_id -> recovery -> access_log -> existing)
 	var handler http.Handler = mux
+	handler = httpx.RequestIDMiddleware(handler)
+	handler = httpx.RecoveryMiddleware(handler)
+	handler = httpx.AccessLogMiddleware(handler)
 	handler = httpx.SecurityHeadersMiddleware(handler)
 	handler = httpx.RequestSizeLimitMiddleware(cfg.MaxRequestSize)(handler)
 	handler = httpx.CORSMiddleware(cfg.AllowedOrigins)(handler)
 
 	log.Printf("Starting server on %s", cfg.AppAddr)
 	httpServer := &http.Server{
-		Addr:         cfg.AppAddr,
-		Handler:      handler,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              cfg.AppAddr,
+		Handler:           handler,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1MB
 	}
+
+	serverCtx, serverStopCtx := context.WithCancel(context.Background())
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+
+	go func() {
+		<-sig
+		log.Println("Shutdown signal received")
+		shutdownCtx, cancel := context.WithTimeout(serverCtx, 30*time.Second)
+		defer cancel()
+
+		go func() {
+			<-shutdownCtx.Done()
+			if shutdownCtx.Err() == context.DeadlineExceeded {
+				log.Fatal("Graceful shutdown timeout, forcing exit")
+			}
+		}()
+
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			log.Fatalf("Server shutdown error: %v", err)
+		}
+		serverStopCtx()
+	}()
 
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
+
+	<-serverCtx.Done()
+	log.Println("Server stopped")
 }
 
 func getEnvInt(key string, def int) int {

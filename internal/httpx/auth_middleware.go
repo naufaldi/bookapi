@@ -17,21 +17,21 @@ func AuthMiddleware(secret string, blacklistRepo BlacklistRepository) func(http.
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if !strings.HasPrefix(authHeader, "Bearer ") {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				JSONErrorWithRequest(r, w, http.StatusUnauthorized, "unauthorized", "Authentication required", nil)
 				return
 			}
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 
 			claims, err := crypto.ParseToken(secret, token)
 			if err != nil {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				JSONErrorWithRequest(r, w, http.StatusUnauthorized, "unauthorized", "Invalid or expired token", nil)
 				return
 			}
 
 			if blacklistRepo != nil {
 				isBlacklisted, err := blacklistRepo.IsBlacklisted(r.Context(), claims.ID)
 				if err != nil || isBlacklisted {
-					http.Error(w, "unauthorized", http.StatusUnauthorized)
+					JSONErrorWithRequest(r, w, http.StatusUnauthorized, "unauthorized", "Token has been revoked", nil)
 					return
 				}
 			}
