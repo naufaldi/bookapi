@@ -29,11 +29,11 @@ type OpenLibraryClient interface {
 }
 
 type Service struct {
-	olClient    OpenLibraryClient
-	catalogRepo catalog.Repository
-	bookRepo    book.Repository
-	ingestRepo  Repository
-	cfg         Config
+	olClient       OpenLibraryClient
+	catalogRepo    catalog.Repository
+	bookRepo       book.Repository
+	ingestRepo     Repository
+	cfg            Config
 	currentSubject string
 }
 

@@ -49,7 +49,7 @@ func TestHTTPHandler_GetByISBN(t *testing.T) {
 
 	testBook := Book{
 		ISBN13: "1234567890123",
-		Title:   "Test Book",
+		Title:  "Test Book",
 	}
 
 	t.Run("success", func(t *testing.T) {
