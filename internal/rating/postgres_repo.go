@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -12,11 +13,16 @@ import (
 var ErrInternalNotFound = errors.New("not found")
 
 type PostgresRepo struct {
-	db *pgxpool.Pool
+	db      *pgxpool.Pool
+	timeout time.Duration
 }
 
-func NewPostgresRepo(db *pgxpool.Pool) *PostgresRepo {
-	return &PostgresRepo{db: db}
+func NewPostgresRepo(db *pgxpool.Pool, timeout time.Duration) *PostgresRepo {
+	return &PostgresRepo{db: db, timeout: timeout}
+}
+
+func (r *PostgresRepo) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, r.timeout)
 }
 
 func (repo *PostgresRepo) CreateOrUpdateRating(ctx context.Context, userID string, isbn string, star int) error {
@@ -25,7 +31,9 @@ func (repo *PostgresRepo) CreateOrUpdateRating(ctx context.Context, userID strin
 	}
 	var bookID string
 	findBookSQL := `SELECT id FROM books WHERE isbn = $1 LIMIT 1`
-	if err := repo.db.QueryRow(ctx, findBookSQL, isbn).Scan(&bookID); err != nil {
+	timeoutCtx, cancel := repo.withTimeout(ctx)
+	defer cancel()
+	if err := repo.db.QueryRow(timeoutCtx, findBookSQL, isbn).Scan(&bookID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrInternalNotFound
 		}
@@ -37,7 +45,7 @@ func (repo *PostgresRepo) CreateOrUpdateRating(ctx context.Context, userID strin
 		ON CONFLICT(user_id, book_id)
 		DO UPDATE SET star = excluded.star, updated_at = now();
 	`
-	_, err := repo.db.Exec(ctx, upsertSQL, userID, bookID, star)
+	_, err := repo.db.Exec(timeoutCtx, upsertSQL, userID, bookID, star)
 	return err
 }
 
@@ -50,7 +58,9 @@ func (repo *PostgresRepo) GetUserRating(ctx context.Context, userID, isbn string
 		LIMIT 1
 	`
 	var star int
-	if err := repo.db.QueryRow(ctx, query, userID, isbn).Scan(&star); err != nil {
+	timeoutCtx, cancel := repo.withTimeout(ctx)
+	defer cancel()
+	if err := repo.db.QueryRow(timeoutCtx, query, userID, isbn).Scan(&star); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, ErrInternalNotFound
 		}
@@ -68,7 +78,9 @@ func (repo *PostgresRepo) GetBookRating(ctx context.Context, isbn string) (float
 	`
 	var average sql.NullFloat64
 	var count int
-	if err := repo.db.QueryRow(ctx, query, isbn).Scan(&average, &count); err != nil {
+	timeoutCtx, cancel := repo.withTimeout(ctx)
+	defer cancel()
+	if err := repo.db.QueryRow(timeoutCtx, query, isbn).Scan(&average, &count); err != nil {
 		return 0, 0, err
 	}
 	if !average.Valid {
@@ -85,7 +97,9 @@ func (repo *PostgresRepo) GetUserRatingStats(ctx context.Context, userID string)
 	`
 	var average sql.NullFloat64
 	var count int
-	if err := repo.db.QueryRow(ctx, query, userID).Scan(&average, &count); err != nil {
+	timeoutCtx, cancel := repo.withTimeout(ctx)
+	defer cancel()
+	if err := repo.db.QueryRow(timeoutCtx, query, userID).Scan(&average, &count); err != nil {
 		return 0, 0, err
 	}
 	if !average.Valid {

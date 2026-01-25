@@ -10,11 +10,16 @@ import (
 )
 
 type PostgresRepo struct {
-	db *pgxpool.Pool
+	db      *pgxpool.Pool
+	timeout time.Duration
 }
 
-func NewPostgresRepo(db *pgxpool.Pool) *PostgresRepo {
-	return &PostgresRepo{db: db}
+func NewPostgresRepo(db *pgxpool.Pool, timeout time.Duration) *PostgresRepo {
+	return &PostgresRepo{db: db, timeout: timeout}
+}
+
+func (r *PostgresRepo) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, r.timeout)
 }
 
 func (r *PostgresRepo) Create(ctx context.Context, s *Session) error {
@@ -23,7 +28,9 @@ func (r *PostgresRepo) Create(ctx context.Context, s *Session) error {
 	VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)
 	RETURNING id, created_at, last_used_at
 	`
-	return r.db.QueryRow(ctx, query,
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	return r.db.QueryRow(timeoutCtx, query,
 		s.UserID,
 		s.RefreshTokenHash,
 		s.UserAgent,
@@ -41,7 +48,9 @@ func (r *PostgresRepo) GetByTokenHash(ctx context.Context, tokenHash string) (Se
 	LIMIT 1
 	`
 	var s Session
-	err := r.db.QueryRow(ctx, query, tokenHash).Scan(
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	err := r.db.QueryRow(timeoutCtx, query, tokenHash).Scan(
 		&s.ID,
 		&s.UserID,
 		&s.RefreshTokenHash,
@@ -68,7 +77,9 @@ func (r *PostgresRepo) ListByUserID(ctx context.Context, userID string) ([]Sessi
 	WHERE user_id = $1 AND expires_at > now()
 	ORDER BY created_at DESC
 	`
-	rows, err := r.db.Query(ctx, query, userID)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	rows, err := r.db.Query(timeoutCtx, query, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +108,9 @@ func (r *PostgresRepo) ListByUserID(ctx context.Context, userID string) ([]Sessi
 
 func (r *PostgresRepo) Delete(ctx context.Context, sessionID string) error {
 	const query = `DELETE FROM sessions WHERE id = $1`
-	result, err := r.db.Exec(ctx, query, sessionID)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	result, err := r.db.Exec(timeoutCtx, query, sessionID)
 	if err != nil {
 		return err
 	}
@@ -109,28 +122,39 @@ func (r *PostgresRepo) Delete(ctx context.Context, sessionID string) error {
 
 func (r *PostgresRepo) DeleteByTokenHash(ctx context.Context, tokenHash string) error {
 	const query = `DELETE FROM sessions WHERE refresh_token_hash = $1`
-	_, err := r.db.Exec(ctx, query, tokenHash)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	_, err := r.db.Exec(timeoutCtx, query, tokenHash)
 	return err
 }
 
 func (r *PostgresRepo) UpdateLastUsed(ctx context.Context, sessionID string) error {
 	const query = `UPDATE sessions SET last_used_at = now() WHERE id = $1`
-	_, err := r.db.Exec(ctx, query, sessionID)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	_, err := r.db.Exec(timeoutCtx, query, sessionID)
 	return err
 }
 
 func (r *PostgresRepo) CleanupExpired(ctx context.Context) error {
 	const query = `DELETE FROM sessions WHERE expires_at < now()`
-	_, err := r.db.Exec(ctx, query)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	_, err := r.db.Exec(timeoutCtx, query)
 	return err
 }
 
 type BlacklistPostgresRepo struct {
-	db *pgxpool.Pool
+	db      *pgxpool.Pool
+	timeout time.Duration
 }
 
-func NewBlacklistPostgresRepo(db *pgxpool.Pool) *BlacklistPostgresRepo {
-	return &BlacklistPostgresRepo{db: db}
+func NewBlacklistPostgresRepo(db *pgxpool.Pool, timeout time.Duration) *BlacklistPostgresRepo {
+	return &BlacklistPostgresRepo{db: db, timeout: timeout}
+}
+
+func (r *BlacklistPostgresRepo) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, r.timeout)
 }
 
 func (r *BlacklistPostgresRepo) AddToken(ctx context.Context, jti string, userID string, expiresAt any) error {
@@ -146,7 +170,9 @@ func (r *BlacklistPostgresRepo) AddToken(ctx context.Context, jti string, userID
 	VALUES ($1, $2, $3)
 	ON CONFLICT (jti) DO NOTHING
 	`
-	_, err := r.db.Exec(ctx, query, jti, userID, expTime)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	_, err := r.db.Exec(timeoutCtx, query, jti, userID, expTime)
 	return err
 }
 
@@ -158,12 +184,16 @@ func (r *BlacklistPostgresRepo) IsBlacklisted(ctx context.Context, jti string) (
 	)
 	`
 	var exists bool
-	err := r.db.QueryRow(ctx, query, jti).Scan(&exists)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	err := r.db.QueryRow(timeoutCtx, query, jti).Scan(&exists)
 	return exists, err
 }
 
 func (r *BlacklistPostgresRepo) CleanupExpired(ctx context.Context) error {
 	const query = `DELETE FROM token_blacklist WHERE expires_at < now()`
-	_, err := r.db.Exec(ctx, query)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	_, err := r.db.Exec(timeoutCtx, query)
 	return err
 }

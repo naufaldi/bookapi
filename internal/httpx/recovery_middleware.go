@@ -12,7 +12,15 @@ func RecoveryMiddleware(next http.Handler) http.Handler {
 			if err := recover(); err != nil {
 				requestID := RequestIDFrom(r)
 				log.Printf("panic recovered: request_id=%s error=%v stack=%s", requestID, err, string(debug.Stack()))
-				JSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
+
+				var wroteHeader bool
+				if rw, ok := w.(*responseWriter); ok {
+					wroteHeader = rw.wroteHeader()
+				}
+
+				if !wroteHeader {
+					JSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
+				}
 			}
 		}()
 		next.ServeHTTP(w, r)

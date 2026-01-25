@@ -5,17 +5,23 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PostgresRepo struct {
-	db *pgxpool.Pool
+	db      *pgxpool.Pool
+	timeout time.Duration
 }
 
-func NewPostgresRepo(db *pgxpool.Pool) *PostgresRepo {
-	return &PostgresRepo{db: db}
+func NewPostgresRepo(db *pgxpool.Pool, timeout time.Duration) *PostgresRepo {
+	return &PostgresRepo{db: db, timeout: timeout}
+}
+
+func (r *PostgresRepo) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, r.timeout)
 }
 
 func (r *PostgresRepo) List(ctx context.Context, q Query) ([]Book, int, error) {
@@ -106,7 +112,9 @@ func (r *PostgresRepo) List(ctx context.Context, q Query) ([]Book, int, error) {
 
 	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM books b %s %s", ratingJoin, where)
 	var total int
-	if err := r.db.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	if err := r.db.QueryRow(timeoutCtx, countSQL, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
@@ -123,7 +131,9 @@ func (r *PostgresRepo) List(ctx context.Context, q Query) ([]Book, int, error) {
 
 	argsWithPage := append([]any{}, args...)
 	argsWithPage = append(argsWithPage, q.Limit, q.Offset)
-	rows, err := r.db.Query(ctx, dataSQL, argsWithPage...)
+	timeoutCtx2, cancel2 := r.withTimeout(ctx)
+	defer cancel2()
+	rows, err := r.db.Query(timeoutCtx2, dataSQL, argsWithPage...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -154,7 +164,9 @@ func (r *PostgresRepo) GetByISBN(ctx context.Context, isbn string) (Book, error)
 		LIMIT 1
 	`
 	var b Book
-	err := r.db.QueryRow(ctx, query, isbn).Scan(
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	err := r.db.QueryRow(timeoutCtx, query, isbn).Scan(
 		&b.ID, &b.ISBN, &b.Title, &b.Subtitle, &b.Genre, &b.Publisher, &b.Description,
 		&b.PublishedDate, &b.PublicationYear, &b.PageCount, &b.Language, &b.CoverURL,
 		&b.CreatedAt, &b.UpdatedAt,
@@ -188,7 +200,9 @@ func (r *PostgresRepo) UpsertFromIngest(ctx context.Context, book *Book) error {
 			cover_url = EXCLUDED.cover_url,
 			updated_at = NOW()`
 
-	_, err := r.db.Exec(ctx, sql,
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	_, err := r.db.Exec(timeoutCtx, sql,
 		book.ISBN, book.Title, book.Subtitle, book.Genre, book.Publisher, book.Description,
 		book.PublishedDate, book.PublicationYear, book.PageCount, book.Language, book.CoverURL,
 	)

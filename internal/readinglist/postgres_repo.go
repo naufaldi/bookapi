@@ -4,6 +4,7 @@ import (
 	"bookapi/internal/book"
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -11,11 +12,16 @@ import (
 var ErrNotFound = errors.New("not found")
 
 type PostgresRepo struct {
-	db *pgxpool.Pool
+	db      *pgxpool.Pool
+	timeout time.Duration
 }
 
-func NewPostgresRepo(db *pgxpool.Pool) *PostgresRepo {
-	return &PostgresRepo{db: db}
+func NewPostgresRepo(db *pgxpool.Pool, timeout time.Duration) *PostgresRepo {
+	return &PostgresRepo{db: db, timeout: timeout}
+}
+
+func (r *PostgresRepo) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, r.timeout)
 }
 
 func (r *PostgresRepo) UpsertReadingListItem(ctx context.Context, userID string, isbn string, status string) error {
@@ -27,7 +33,9 @@ func (r *PostgresRepo) UpsertReadingListItem(ctx context.Context, userID string,
 		ON CONFLICT (user_id, book_id)
 		DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
 	`
-	commandTag, err := r.db.Exec(ctx, upsertSQL, userID, isbn, status)
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	commandTag, err := r.db.Exec(timeoutCtx, upsertSQL, userID, isbn, status)
 	if err != nil {
 		return err
 	}
@@ -45,7 +53,9 @@ func (r *PostgresRepo) ListReadingListByStatus(ctx context.Context, userID strin
 		WHERE ub.user_id = $1 AND ub.status = $2
 	`
 	var total int
-	if err := r.db.QueryRow(ctx, countSQL, userID, status).Scan(&total); err != nil {
+	timeoutCtx, cancel := r.withTimeout(ctx)
+	defer cancel()
+	if err := r.db.QueryRow(timeoutCtx, countSQL, userID, status).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
@@ -58,7 +68,9 @@ func (r *PostgresRepo) ListReadingListByStatus(ctx context.Context, userID strin
 		ORDER BY b.title ASC
 		LIMIT $3 OFFSET $4
 	`
-	rows, err := r.db.Query(ctx, dataSQL, userID, status, limit, offset)
+	timeoutCtx2, cancel2 := r.withTimeout(ctx)
+	defer cancel2()
+	rows, err := r.db.Query(timeoutCtx2, dataSQL, userID, status, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
