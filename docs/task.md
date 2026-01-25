@@ -3,6 +3,7 @@
 This document tracks the implementation progress of RFC requirements from `docs/brain.md`.
 
 ## PHASE 1: Basic Security Hardening
+
 - [x] 1.1 CORS Middleware
 - [x] 1.2 Request Size Limits Middleware
 - [x] 1.3 Security Headers Middleware
@@ -10,6 +11,7 @@ This document tracks the implementation progress of RFC requirements from `docs/
 - [x] 1.5 Password Strength Validation
 
 ## PHASE 2: Authentication & Session Management
+
 - [x] 2.1 Database Migrations
 - [x] 2.2 Session Entity & Repository
 - [x] 2.3 Token Blacklist Repository
@@ -21,6 +23,7 @@ This document tracks the implementation progress of RFC requirements from `docs/
 - [x] 2.9 Route Registration
 
 ## PHASE 3: User Profile Management
+
 - [x] 3.1 Database Migrations
 - [x] 3.2 User Entity Update
 - [x] 3.3 User Repository Update
@@ -44,6 +47,7 @@ This document tracks the implementation progress of RFC requirements from `docs/
   - [x] Add `PATCH /me/profile` route (protected)
 
 ## PHASE 4: Advanced Search & Filtering
+
 - [x] 4.1 Database Migrations
   - [x] Create `db/migrations/004_search_improvements.sql`
   - [x] Add book fields (year, pages, language, cover)
@@ -65,6 +69,7 @@ This document tracks the implementation progress of RFC requirements from `docs/
   - [x] Use consistent JSON response format
 
 ## PHASE 5: Better API Documentation
+
 - [x] 5.1 Consistent Response Format
 - [x] 5.2 Update All Handlers
   - [x] `user_handler.go`
@@ -81,48 +86,70 @@ This document tracks the implementation progress of RFC requirements from `docs/
 ## Summary
 
 ### Completed
+
 - ✅ Phase 1: Basic Security Hardening (100%)
 - ✅ Phase 2: Authentication & Session Management (100%)
 - ✅ Phase 3: User Profile Management (100%)
 - ✅ Phase 4: Advanced Search & Filtering (100%)
 - ✅ Phase 5: Better API Documentation (100%)
 
+### Phase 6: Production Readiness & Open Library Catalog
+
+| Epic                                  | Status         | Progress |
+| ------------------------------------- | -------------- | -------- |
+| Epic 0: Runtime Hygiene & Config      | ✅ Complete    | 3/3      |
+| Epic 1: Observability Baseline        | ✅ Complete    | 4/4      |
+| Epic 2: API Contract & v1             | ⚠️ Partial     | 2.5/3    |
+| Epic 3: Data Layer Hardening          | ❌ Not Started | 0/3      |
+| Epic 4: Catalog & Open Library Client | ✅ Complete    | 5/5      |
+| Epic 5: Ingestion Job (Cron)          | ✅ Complete    | 3/3      |
+| Epic 6: SQL & Search Learning         | ❌ Not Started | 0/4      |
+
+**Overall Phase 6: 62.5% Complete** (17.5/28 tasks)
+
 ## PHASE 6: Production Readiness & Open Library Catalog
 
 ### Epic 0: Runtime Hygiene & Config
-- [ ] 6.0.1 Implement `Config` struct and validation in `cmd/api/main.go`.
-- [ ] 6.0.2 Implement graceful shutdown using `context.WithCancel` and `http.Server.Shutdown`.
-- [ ] 6.0.3 Configure `ReadHeaderTimeout` and `MaxHeaderBytes` for the HTTP server.
+
+- [x] 6.0.1 Implement `Config` struct and validation in `cmd/api/main.go`.
+- [x] 6.0.2 Implement graceful shutdown using `context.WithCancel` and `http.Server.Shutdown`.
+- [x] 6.0.3 Configure `ReadHeaderTimeout` and `MaxHeaderBytes` for the HTTP server.
 
 ### Epic 1: Observability Baseline
-- [ ] 6.1.1 Create `httpx.RequestIDMiddleware`.
-- [ ] 6.1.2 Create `httpx.AccessLogMiddleware`.
-- [ ] 6.1.3 Create `httpx.RecoveryMiddleware`.
-- [ ] 6.1.4 Integrate observability middlewares into `main.go`.
+
+- [x] 6.1.1 Create `httpx.RequestIDMiddleware`.
+- [x] 6.1.2 Create `httpx.AccessLogMiddleware`.
+- [x] 6.1.3 Create `httpx.RecoveryMiddleware`.
+- [x] 6.1.4 Integrate observability middlewares into `main.go`.
 
 ### Epic 2: API Contract & v1
-- [ ] 6.2.1 Update `httpx.JSONSuccess` and `httpx.JSONError` to include standard envelope and `request_id`.
-- [ ] 6.2.2 Implement `/v1` route prefixing in `main.go`.
-- [ ] 6.2.3 Fix routing bug: Register `PATCH /me/profile` as a separate route.
+
+- [x] 6.2.1 Update `httpx.JSONSuccess` and `httpx.JSONError` to include standard envelope and `request_id`.
+- [x] 6.2.2 Implement `/v1` route prefixing in `main.go`.
+- [?] 6.2.3 Fix routing bug: Register `PATCH /me/profile` as a separate route. (Needs verification)
 
 ### Epic 3: Data Layer Hardening
+
 - [ ] 6.3.1 Add context timeouts to all `PostgresRepo` methods.
 - [ ] 6.3.2 Implement `goose` for migration management and update CI/Deployment scripts.
 - [ ] 6.3.3 Add missing indexes for `users(email)`, `sessions(user_id)`, and `reading_list(user_id)`.
 
 ### Epic 4: Catalog & Open Library Client
-- [ ] 6.4.1 Implement `openlibrary.Client` in `internal/platform/openlibrary`.
-- [ ] 6.4.2 Create migrations for `catalog_books` and `catalog_sources`.
-- [ ] 6.4.3 Implement `catalog.Service` with read-through caching logic.
-- [ ] 6.4.4 Implement `GET /v1/catalog/books/{isbn}` endpoint.
-- [ ] 6.4.5 Implement `GET /v1/catalog/search` with FTS.
+
+- [x] 6.4.1 Implement `openlibrary.Client` in `internal/platform/openlibrary`.
+- [x] 6.4.2 Create migrations for `catalog_books` and `catalog_sources`.
+- [x] 6.4.3 Implement `catalog.Service` with read-through caching logic.
+- [x] 6.4.4 Implement `GET /v1/catalog/books/{isbn}` endpoint.
+- [x] 6.4.5 Implement `GET /v1/catalog/search` with FTS.
 
 ### Epic 5: Ingestion Job (Cron)
-- [ ] 6.5.1 Create the ingestion job logic in `internal/ingest`.
-- [ ] 6.5.2 Implement batching, rate-limiting, and exponential backoff.
-- [ ] 6.5.3 Add `POST /internal/jobs/ingest` protected endpoint.
+
+- [x] 6.5.1 Create the ingestion job logic in `internal/ingest`.
+- [x] 6.5.2 Implement batching, rate-limiting, and exponential backoff.
+- [x] 6.5.3 Add `POST /internal/jobs/ingest` protected endpoint.
 
 ### Epic 6: SQL & Search Learning (Exercises)
+
 - [ ] 6.6.1 Populate the DB with 10k+ books from Open Library.
 - [ ] 6.6.2 Conduct `EXPLAIN ANALYZE` benchmarks for complex queries.
 - [ ] 6.6.3 Fine-tune FTS ranking and weights.
@@ -131,6 +158,7 @@ This document tracks the implementation progress of RFC requirements from `docs/
 ### Testing Status
 
 ### Unit Tests Created
+
 - ✅ CORS middleware tests
 - ✅ Request size limit middleware tests
 - ✅ Security headers middleware tests
@@ -146,10 +174,12 @@ This document tracks the implementation progress of RFC requirements from `docs/
 - ✅ User handler tests (updated)
 
 ### Integration Tests
+
 - ✅ Basic profile integration test `internal/http/integration_test.go`
 - [x] Verified all tests pass with `go test ./...`
 
 ## Notes
+
 - All RFC phases are now fully implemented and tested.
 - Main API compiles successfully.
 - Routing for public vs protected routes correctly handled in `cmd/api/main.go`.
