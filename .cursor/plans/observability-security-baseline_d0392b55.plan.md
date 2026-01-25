@@ -1,31 +1,31 @@
 ---
 name: observability-security-baseline
-overview: "Add a simple, RFC-aligned observability + security baseline to the current `net/http` Go API: request IDs, panic recovery, access logs, basic metrics, rate limiting, and runtime hygiene (graceful shutdown + HTTP server hardening)."
+overview: 'Add a simple, RFC-aligned observability + security baseline to the current `net/http` Go API: request IDs, panic recovery, access logs, basic metrics, rate limiting, and runtime hygiene (graceful shutdown + HTTP server hardening).'
 todos:
   - id: add-request-id
-    content: "Add `internal/httpx/request_id_middleware.go`: generate/propagate `X-Request-Id`, store in request context, and expose helper `RequestIDFrom(*http.Request)`."
-    status: pending
+    content: 'Add `internal/httpx/request_id_middleware.go`: generate/propagate `X-Request-Id`, store in request context, and expose helper `RequestIDFrom(*http.Request)`.'
+    status: completed
   - id: add-recovery
-    content: "Add `internal/httpx/recovery_middleware.go`: recover panics, log the panic + request_id, and respond with `httpx.JSONError(..., meta.request_id)`."
-    status: pending
+    content: 'Add `internal/httpx/recovery_middleware.go`: recover panics, log the panic + request_id, and respond with `httpx.JSONError(..., meta.request_id)`.'
+    status: completed
   - id: add-access-logs
-    content: "Add `internal/httpx/access_log_middleware.go`: wrap `http.ResponseWriter` to capture status/bytes, log method/path/status/duration_ms/request_id/user_id (from `httpx.UserIDFrom`)."
-    status: pending
+    content: 'Add `internal/httpx/access_log_middleware.go`: wrap `http.ResponseWriter` to capture status/bytes, log method/path/status/duration_ms/request_id/user_id (from `httpx.UserIDFrom`).'
+    status: completed
   - id: response-meta-request-id
     content: Update `internal/httpx/responses.go` so `JSONSuccess`/`JSONError` automatically include `meta.request_id` (prefer reading request id from context).
-    status: pending
+    status: completed
   - id: fix-auth-middleware-errors
     content: Update `internal/httpx/auth_middleware.go` to stop using `http.Error` and instead return `httpx.JSONError` (so auth failures also include request id and consistent envelope).
-    status: pending
+    status: completed
   - id: graceful-shutdown-hardening
-    content: "Update `cmd/api/main.go` to implement graceful shutdown on SIGINT/SIGTERM and add RFC hardening: `ReadHeaderTimeout` and `MaxHeaderBytes` on `http.Server`."
-    status: pending
+    content: 'Update `cmd/api/main.go` to implement graceful shutdown on SIGINT/SIGTERM and add RFC hardening: `ReadHeaderTimeout` and `MaxHeaderBytes` on `http.Server`.'
+    status: completed
   - id: rate-limiting
-    content: "Add `internal/httpx/ratelimit_middleware.go` using `golang.org/x/time/rate` (already in `go.mod`) and apply it to sensitive routes: `/users/login`, `/users/register`, `/auth/refresh`, `/internal/jobs/ingest`."
-    status: pending
+    content: 'Add `internal/httpx/ratelimit_middleware.go` using `golang.org/x/time/rate` (already in `go.mod`) and apply it to sensitive routes: `/users/login`, `/users/register`, `/auth/refresh`, `/internal/jobs/ingest`.'
+    status: completed
   - id: metrics-endpoint-optional
     content: (Optional) Add Prometheus `/metrics` endpoint in `cmd/api/main.go` (new dependency `prometheus/client_golang`), plus optional request metrics in AccessLog middleware.
-    status: pending
+    status: completed
 isProject: false
 ---
 

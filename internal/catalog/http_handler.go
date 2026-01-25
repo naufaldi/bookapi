@@ -50,11 +50,11 @@ func (h *HTTPHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 	books, total, err := h.svc.Search(r.Context(), q)
 	if err != nil {
-		httpx.JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
+		httpx.JSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
-	httpx.JSONSuccess(w, books, map[string]any{
+	httpx.JSONSuccess(w, r, books, map[string]any{
 		"page":        page,
 		"page_size":   pageSize,
 		"total":       total,
@@ -76,15 +76,15 @@ func (h *HTTPHandler) Search(w http.ResponseWriter, r *http.Request) {
 func (h *HTTPHandler) GetByISBN(w http.ResponseWriter, r *http.Request) {
 	isbn := r.PathValue("isbn")
 	if isbn == "" {
-		httpx.JSONError(w, http.StatusBadRequest, "BAD_REQUEST", "ISBN is required", nil)
+		httpx.JSONError(w, r, http.StatusBadRequest, "BAD_REQUEST", "ISBN is required", nil)
 		return
 	}
 
 	book, err := h.svc.GetByISBN(r.Context(), isbn)
 	if err != nil {
-		httpx.JSONError(w, http.StatusNotFound, "NOT_FOUND", "Book not found in catalog", nil)
+		httpx.JSONError(w, r, http.StatusNotFound, "NOT_FOUND", "Book not found in catalog", nil)
 		return
 	}
 
-	httpx.JSONSuccess(w, book, nil)
+	httpx.JSONSuccess(w, r, book, nil)
 }

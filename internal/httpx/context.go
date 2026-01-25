@@ -8,8 +8,9 @@ import (
 type contextKey string
 
 const (
-	userIDKey contextKey = "userID"
-	roleKey   contextKey = "role"
+	userIDKey    contextKey = "userID"
+	roleKey      contextKey = "role"
+	requestIDKey contextKey = "requestID"
 )
 
 // UserIDFrom retrieves the user ID from the request context.
@@ -32,4 +33,17 @@ func RoleFrom(r *http.Request) string {
 func ContextWithUser(ctx context.Context, userID, role string) context.Context {
 	ctx = context.WithValue(ctx, userIDKey, userID)
 	return context.WithValue(ctx, roleKey, role)
+}
+
+// RequestIDFrom retrieves the request ID from the request context.
+func RequestIDFrom(r *http.Request) string {
+	if v, ok := r.Context().Value(requestIDKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// ContextWithRequestID returns a new context with the request ID.
+func ContextWithRequestID(ctx context.Context, requestID string) context.Context {
+	return context.WithValue(ctx, requestIDKey, requestID)
 }

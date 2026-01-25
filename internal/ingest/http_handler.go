@@ -29,14 +29,14 @@ func NewHTTPHandler(svc *Service, secret string) *HTTPHandler {
 func (h *HTTPHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 	secret := r.Header.Get("X-Internal-Secret")
 	if h.secret != "" && secret != h.secret {
-		httpx.JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid internal secret", nil)
+		httpx.JSONError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "invalid internal secret", nil)
 		return
 	}
 
 	if err := h.svc.Run(r.Context()); err != nil {
-		httpx.JSONError(w, http.StatusInternalServerError, "INGEST_FAILED", err.Error(), nil)
+		httpx.JSONError(w, r, http.StatusInternalServerError, "INGEST_FAILED", err.Error(), nil)
 		return
 	}
 
-	httpx.JSONSuccess(w, map[string]string{"message": "ingestion completed"}, nil)
+	httpx.JSONSuccess(w, r, map[string]string{"message": "ingestion completed"}, nil)
 }

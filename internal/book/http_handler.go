@@ -86,11 +86,11 @@ func (h *HTTPHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	books, total, err := h.service.List(r.Context(), params)
 	if err != nil {
-		httpx.JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
+		httpx.JSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
-	httpx.JSONSuccess(w, books, map[string]any{
+	httpx.JSONSuccess(w, r, books, map[string]any{
 		"page":        page,
 		"page_size":   pageSize,
 		"total":       total,
@@ -126,11 +126,11 @@ func (h *HTTPHandler) GetByISBN(w http.ResponseWriter, r *http.Request) {
 	book, err := h.service.GetByISBN(r.Context(), isbn)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			httpx.JSONError(w, http.StatusNotFound, "NOT_FOUND", "ISBN not found", nil)
+			httpx.JSONError(w, r, http.StatusNotFound, "NOT_FOUND", "ISBN not found", nil)
 			return
 		}
-		httpx.JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
+		httpx.JSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
-	httpx.JSONSuccess(w, book, nil)
+	httpx.JSONSuccess(w, r, book, nil)
 }

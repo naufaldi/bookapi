@@ -37,13 +37,13 @@ type SessionResponse struct {
 func (h *HTTPHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	userID := httpx.UserIDFrom(r)
 	if userID == "" {
-		httpx.JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
+		httpx.JSONError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
 		return
 	}
 
 	sessions, err := h.service.ListByUserID(r.Context(), userID)
 	if err != nil {
-		httpx.JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
+		httpx.JSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
@@ -66,7 +66,7 @@ func (h *HTTPHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	httpx.JSONSuccess(w, response, nil)
+	httpx.JSONSuccess(w, r, response, nil)
 }
 
 // DeleteSession handles DELETE /me/sessions/{id}
@@ -86,20 +86,20 @@ func (h *HTTPHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 func (h *HTTPHandler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	userID := httpx.UserIDFrom(r)
 	if userID == "" {
-		httpx.JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
+		httpx.JSONError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
 		return
 	}
 
 	sessionID := r.PathValue("id")
 	if sessionID == "" {
-		httpx.JSONError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid session ID", nil)
+		httpx.JSONError(w, r, http.StatusBadRequest, "BAD_REQUEST", "Invalid session ID", nil)
 		return
 	}
 
 	// Security check: ensure session belongs to user
 	sessions, err := h.service.ListByUserID(r.Context(), userID)
 	if err != nil {
-		httpx.JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
+		httpx.JSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
@@ -112,16 +112,16 @@ func (h *HTTPHandler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !found {
-		httpx.JSONError(w, http.StatusNotFound, "NOT_FOUND", "Session not found", nil)
+		httpx.JSONError(w, r, http.StatusNotFound, "NOT_FOUND", "Session not found", nil)
 		return
 	}
 
 	if err := h.service.Delete(r.Context(), sessionID); err != nil {
 		if errors.Is(err, ErrNotFound) {
-			httpx.JSONError(w, http.StatusNotFound, "NOT_FOUND", "Session not found", nil)
+			httpx.JSONError(w, r, http.StatusNotFound, "NOT_FOUND", "Session not found", nil)
 			return
 		}
-		httpx.JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
+		httpx.JSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 

@@ -17,8 +17,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"bookapi/internal/auth"
@@ -37,6 +39,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
@@ -153,6 +157,7 @@ func main() {
 
 	// 2. Middlewares & Routing
 	authMid := httpx.AuthMiddleware(cfg.JWTSecret, blacklistRepo)
+	rateLimiter := httpx.NewRateLimitMiddleware(5.0, 10) // 5 req/sec, burst of 10
 
 	mux := http.NewServeMux()
 
@@ -160,6 +165,7 @@ func main() {
 	mux.HandleFunc("/swagger/", httpSwagger.WrapHandler)
 	mux.HandleFunc("GET /healthz", healthzHandler)
 	mux.HandleFunc("GET /readyz", readyzHandler(dbPool))
+	mux.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{}))
 
 	// Books
 	mux.HandleFunc("GET /books", bookHandler.List)
@@ -167,10 +173,10 @@ func main() {
 	mux.HandleFunc("GET /books/{isbn}/rating", ratingHandler.GetRating)
 	mux.Handle("POST /books/{isbn}/rating", authMid(http.HandlerFunc(ratingHandler.CreateRating)))
 
-	// Auth & Users
-	mux.HandleFunc("POST /users/register", userHandler.RegisterUser)
-	mux.HandleFunc("POST /users/login", authHandler.Login)
-	mux.HandleFunc("POST /auth/refresh", authHandler.RefreshToken)
+	// Auth & Users (rate limited)
+	mux.Handle("POST /users/register", rateLimiter.Middleware(http.HandlerFunc(userHandler.RegisterUser)))
+	mux.Handle("POST /users/login", rateLimiter.Middleware(http.HandlerFunc(authHandler.Login)))
+	mux.Handle("POST /auth/refresh", rateLimiter.Middleware(http.HandlerFunc(authHandler.RefreshToken)))
 	mux.Handle("POST /auth/logout", authMid(http.HandlerFunc(authHandler.Logout)))
 
 	// Me
@@ -190,26 +196,50 @@ func main() {
 	mux.Handle("POST /users/readinglist", authMid(http.HandlerFunc(readingListHandler.AddOrUpdate)))
 	mux.HandleFunc("GET /users/{id}/{status}", readingListHandler.ListByStatus)
 
-	// Internal Jobs
-	mux.HandleFunc("POST /internal/jobs/ingest", ingestHandler.Ingest)
+	// Internal Jobs (rate limited)
+	mux.Handle("POST /internal/jobs/ingest", rateLimiter.Middleware(http.HandlerFunc(ingestHandler.Ingest)))
 
-	// Global Middlewares
+	// Global Middlewares (order matters: outermost first)
 	var handler http.Handler = mux
+	handler = httpx.RequestIDMiddleware(handler)
+	handler = httpx.RecoveryMiddleware(handler)
+	handler = httpx.AccessLogMiddleware(handler)
 	handler = httpx.SecurityHeadersMiddleware(handler)
 	handler = httpx.RequestSizeLimitMiddleware(cfg.MaxRequestSize)(handler)
 	handler = httpx.CORSMiddleware(cfg.AllowedOrigins)(handler)
 
 	log.Printf("Starting server on %s", cfg.AppAddr)
 	httpServer := &http.Server{
-		Addr:         cfg.AppAddr,
-		Handler:      handler,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              cfg.AppAddr,
+		Handler:           handler,
+		ReadTimeout:       5 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1MB
 	}
 
-	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("server error: %v", err)
+	// Graceful shutdown
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	log.Println("Server started. Press Ctrl+C to shutdown.")
+	<-shutdown
+	log.Println("Shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Printf("Server forced to shutdown: %v", err)
+	} else {
+		log.Println("Server stopped gracefully")
 	}
 }
 

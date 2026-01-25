@@ -38,7 +38,7 @@ type registerReq struct {
 func (h *HTTPHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	var req registerReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpx.JSONError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body", nil)
+		httpx.JSONError(w, r, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body", nil)
 		return
 	}
 	req.Email = strings.TrimSpace(req.Email)
@@ -46,27 +46,27 @@ func (h *HTTPHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 
 	if validationErrors := httpx.ValidateStruct(req); len(validationErrors) > 0 {
 		// Convert httpx.ErrorDetail to httpx.ErrorDetail (it's the same type now)
-		httpx.JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid input", validationErrors)
+		httpx.JSONError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid input", validationErrors)
 		return
 	}
 
 	hashedPassword, err := crypto.HashPassword(req.Password)
 	if err != nil {
-		httpx.JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
+		httpx.JSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
 	newUser, err := h.service.Register(r.Context(), req.Email, req.Username, hashedPassword)
 	if err != nil {
 		if errors.Is(err, ErrAlreadyExists) {
-			httpx.JSONError(w, http.StatusConflict, "ALREADY_EXISTS", "Email already exists", nil)
+			httpx.JSONError(w, r, http.StatusConflict, "ALREADY_EXISTS", "Email already exists", nil)
 			return
 		}
-		httpx.JSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
+		httpx.JSONError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error", nil)
 		return
 	}
 
-	httpx.JSONSuccessCreated(w, map[string]any{
+	httpx.JSONSuccessCreated(w, r, map[string]any{
 		"id":       newUser.ID,
 		"email":    newUser.Email,
 		"username": newUser.Username,
@@ -87,17 +87,17 @@ func (h *HTTPHandler) RegisterUser(w http.ResponseWriter, r *http.Request) {
 func (h *HTTPHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	userID := httpx.UserIDFrom(r)
 	if userID == "" {
-		httpx.JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
+		httpx.JSONError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
 		return
 	}
 
 	user, err := h.service.GetByID(r.Context(), userID)
 	if err != nil {
-		httpx.JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
+		httpx.JSONError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
 		return
 	}
 
-	httpx.JSONSuccess(w, map[string]any{
+	httpx.JSONSuccess(w, r, map[string]any{
 		"id":       user.ID,
 		"email":    user.Email,
 		"username": user.Username,

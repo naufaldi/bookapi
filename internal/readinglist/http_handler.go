@@ -39,22 +39,22 @@ type upsertReq struct {
 func (h *HTTPHandler) AddOrUpdate(w http.ResponseWriter, r *http.Request) {
 	userID := httpx.UserIDFrom(r)
 	if userID == "" {
-		httpx.JSONError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
+		httpx.JSONError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized", nil)
 		return
 	}
 
 	var req upsertReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpx.JSONError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body", nil)
+		httpx.JSONError(w, r, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body", nil)
 		return
 	}
 
 	if err := h.service.Upsert(r.Context(), userID, req.ISBN, req.Status); err != nil {
 		if errors.Is(err, ErrNotFound) {
-			httpx.JSONError(w, http.StatusNotFound, "NOT_FOUND", "Book not found", nil)
+			httpx.JSONError(w, r, http.StatusNotFound, "NOT_FOUND", "Book not found", nil)
 			return
 		}
-		httpx.JSONError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error(), nil)
+		httpx.JSONError(w, r, http.StatusBadRequest, "BAD_REQUEST", err.Error(), nil)
 		return
 	}
 
@@ -100,11 +100,11 @@ func (h *HTTPHandler) ListByStatus(w http.ResponseWriter, r *http.Request) {
 
 	books, total, err := h.service.List(r.Context(), userID, status, limit, offset)
 	if err != nil {
-		httpx.JSONError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error(), nil)
+		httpx.JSONError(w, r, http.StatusBadRequest, "BAD_REQUEST", err.Error(), nil)
 		return
 	}
 
-	httpx.JSONSuccess(w, books, map[string]any{
+	httpx.JSONSuccess(w, r, books, map[string]any{
 		"total":  total,
 		"limit":  limit,
 		"offset": offset,
