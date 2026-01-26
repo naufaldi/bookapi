@@ -35,7 +35,7 @@ import (
 	"bookapi/internal/session"
 	"bookapi/internal/user"
 
-	_ "bookapi/docs"
+	docs "bookapi/docs"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -171,8 +171,12 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	// Swagger UI needs a correct scheme/host/basePath to avoid mixed-content failures
+	// when the API is behind an HTTPS-terminating reverse proxy.
+	mux.HandleFunc("GET /swagger/openapi.json", swaggerDocHandler("/v1"))
+
 	// Infrastructure & Public (not versioned)
-	mux.HandleFunc("/swagger/", httpSwagger.WrapHandler)
+	mux.HandleFunc("/swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/openapi.json")))
 	mux.HandleFunc("GET /healthz", healthzHandler)
 	mux.HandleFunc("GET /readyz", readyzHandler(dbPool))
 	mux.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{}))
@@ -256,6 +260,39 @@ func main() {
 		log.Printf("Server forced to shutdown: %v", err)
 	} else {
 		log.Println("Server stopped gracefully")
+	}
+}
+
+func swaggerDocHandler(basePath string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		if xf := r.Header.Get("X-Forwarded-Proto"); xf != "" {
+			if p := strings.TrimSpace(strings.Split(xf, ",")[0]); p != "" {
+				scheme = p
+			}
+		}
+
+		host := r.Host
+		if xfh := r.Header.Get("X-Forwarded-Host"); xfh != "" {
+			if h := strings.TrimSpace(strings.Split(xfh, ",")[0]); h != "" {
+				host = h
+			}
+		}
+
+		// Copy the generated spec and override per-request values.
+		spec := *docs.SwaggerInfo
+		spec.Host = host
+		spec.Schemes = []string{scheme}
+		spec.BasePath = basePath
+
+		doc := spec.ReadDoc()
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(doc))
 	}
 }
 
