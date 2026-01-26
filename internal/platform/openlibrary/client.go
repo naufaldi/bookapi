@@ -24,7 +24,7 @@ type Client struct {
 func NewClient(userAgent string, rps int, maxRetries int) *Client {
 	return &Client{
 		httpClient: &http.Client{
-			Timeout: 15 * time.Second,
+			Timeout: 60 * time.Second,
 		},
 		userAgent:  userAgent,
 		baseURL:    "https://openlibrary.org",
