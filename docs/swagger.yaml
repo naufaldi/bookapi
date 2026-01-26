@@ -102,7 +102,7 @@ definitions:
     - password
     - username
     type: object
-host: localhost:8080
+host: book-api.faldi.xyz
 info:
   contact:
     name: API Support
