@@ -3,7 +3,7 @@
 // @description A REST API for tracking books you've read, want to read, or are currently reading.
 // @termsOfService http://swagger.io/terms/
 // @contact.name API Support
-// @host localhost:8080
+// @host book-api.faldi.xyz
 // @basePath /
 // @schemes http https
 // @securityDefinitions.apikey Bearer
