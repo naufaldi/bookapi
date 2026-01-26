@@ -37,3 +37,10 @@ CREATE INDEX IF NOT EXISTS books_title_trgm_idx ON books USING GIN(title gin_trg
 CREATE INDEX IF NOT EXISTS books_publication_year_idx ON books(publication_year);
 CREATE INDEX IF NOT EXISTS books_genre_idx ON books(genre);
 CREATE INDEX IF NOT EXISTS books_language_idx ON books(language);
+
+-- Populate search_vector for existing books
+UPDATE books SET search_vector =
+  setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
+  setweight(to_tsvector('english', coalesce(genre, '')), 'B') ||
+  setweight(to_tsvector('english', coalesce(publisher, '')), 'C') ||
+  setweight(to_tsvector('english', coalesce(description, '')), 'D');
