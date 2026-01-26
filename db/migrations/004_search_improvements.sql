@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Migration for advanced search and book fields
 
 -- Add new fields to books table
@@ -13,6 +15,7 @@ ALTER TABLE books ADD COLUMN IF NOT EXISTS search_vector TSVECTOR;
 CREATE INDEX IF NOT EXISTS books_search_idx ON books USING GIN(search_vector);
 
 -- Trigger function to update search_vector
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION books_search_trigger() RETURNS trigger AS $$
 BEGIN
   new.search_vector :=
@@ -23,6 +26,7 @@ BEGIN
   RETURN new;
 END
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 -- Create trigger
 DROP TRIGGER IF EXISTS tsvector_update ON books;
@@ -44,3 +48,20 @@ UPDATE books SET search_vector =
   setweight(to_tsvector('english', coalesce(genre, '')), 'B') ||
   setweight(to_tsvector('english', coalesce(publisher, '')), 'C') ||
   setweight(to_tsvector('english', coalesce(description, '')), 'D');
+
+-- +goose Down
+
+DROP INDEX IF EXISTS books_language_idx;
+DROP INDEX IF EXISTS books_genre_idx;
+DROP INDEX IF EXISTS books_publication_year_idx;
+DROP INDEX IF EXISTS books_title_trgm_idx;
+DROP INDEX IF EXISTS books_search_idx;
+
+DROP TRIGGER IF EXISTS tsvector_update ON books;
+DROP FUNCTION IF EXISTS books_search_trigger();
+
+ALTER TABLE books DROP COLUMN IF EXISTS search_vector;
+ALTER TABLE books DROP COLUMN IF EXISTS cover_url;
+ALTER TABLE books DROP COLUMN IF EXISTS language;
+ALTER TABLE books DROP COLUMN IF EXISTS page_count;
+ALTER TABLE books DROP COLUMN IF EXISTS publication_year;

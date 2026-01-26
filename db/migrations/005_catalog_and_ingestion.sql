@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Migration for Catalog and Ingestion history
 
 CREATE TABLE IF NOT EXISTS catalog_books (
@@ -17,6 +19,7 @@ CREATE TABLE IF NOT EXISTS catalog_books (
 CREATE INDEX IF NOT EXISTS idx_catalog_books_search_vector ON catalog_books USING GIN(search_vector);
 
 -- Trigger function to update search_vector for catalog_books
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION catalog_books_search_trigger() RETURNS trigger AS $$
 BEGIN
   new.search_vector :=
@@ -27,7 +30,7 @@ BEGIN
   RETURN new;
 END
 $$ LANGUAGE plpgsql;
-
+-- +goose StatementEnd
 
 DROP TRIGGER IF EXISTS tsvector_update_catalog ON catalog_books;
 CREATE TRIGGER tsvector_update_catalog BEFORE INSERT OR UPDATE
@@ -77,3 +80,16 @@ CREATE TABLE IF NOT EXISTS ingest_run_authors (
     author_key VARCHAR(50) REFERENCES catalog_authors(key) ON DELETE CASCADE,
     PRIMARY KEY (run_id, author_key)
 );
+
+-- +goose Down
+
+DROP TABLE IF EXISTS ingest_run_authors;
+DROP TABLE IF EXISTS ingest_run_books;
+DROP TABLE IF EXISTS ingest_runs;
+DROP TABLE IF EXISTS catalog_sources;
+DROP TABLE IF EXISTS catalog_authors;
+
+DROP TRIGGER IF EXISTS tsvector_update_catalog ON catalog_books;
+DROP FUNCTION IF EXISTS catalog_books_search_trigger();
+DROP INDEX IF EXISTS idx_catalog_books_search_vector;
+DROP TABLE IF EXISTS catalog_books;

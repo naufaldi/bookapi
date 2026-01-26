@@ -1,3 +1,5 @@
+-- +goose Up
+
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS location VARCHAR(255);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS website VARCHAR(500);
@@ -6,3 +8,13 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS reading_preferences JSONB;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_users_public ON users(is_public) WHERE is_public = true;
+
+-- +goose Down
+
+DROP INDEX IF EXISTS idx_users_public;
+ALTER TABLE users DROP COLUMN IF EXISTS last_login_at;
+ALTER TABLE users DROP COLUMN IF EXISTS reading_preferences;
+ALTER TABLE users DROP COLUMN IF EXISTS is_public;
+ALTER TABLE users DROP COLUMN IF EXISTS website;
+ALTER TABLE users DROP COLUMN IF EXISTS location;
+ALTER TABLE users DROP COLUMN IF EXISTS bio;

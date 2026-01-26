@@ -1,4 +1,4 @@
--- Base schema (idempotent)
+-- +goose Up
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS ratings (
 
 CREATE INDEX IF NOT EXISTS ratings_book_idx ON ratings (book_id);
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -63,6 +64,7 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 DROP TRIGGER IF EXISTS users_set_updated_at ON users;
 CREATE TRIGGER users_set_updated_at
@@ -83,3 +85,19 @@ DROP TRIGGER IF EXISTS user_books_set_update_at ON user_books;
 CREATE TRIGGER user_books_set_update_at
 BEFORE UPDATE ON user_books
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- +goose Down
+
+DROP TRIGGER IF EXISTS users_set_updated_at ON users;
+DROP TRIGGER IF EXISTS books_set_updated_at ON books;
+DROP TRIGGER IF EXISTS ratings_set_update_at ON ratings;
+DROP TRIGGER IF EXISTS user_books_set_update_at ON user_books;
+
+DROP FUNCTION IF EXISTS set_updated_at();
+
+DROP TABLE IF EXISTS ratings;
+DROP TABLE IF EXISTS user_books;
+DROP TABLE IF EXISTS books;
+DROP TABLE IF EXISTS users;
+
+DROP EXTENSION IF EXISTS pgcrypto;

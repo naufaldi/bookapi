@@ -1,3 +1,5 @@
+-- +goose Up
+
 CREATE TABLE IF NOT EXISTS sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -21,3 +23,8 @@ CREATE TABLE IF NOT EXISTS token_blacklist (
 );
 
 CREATE INDEX IF NOT EXISTS idx_token_blacklist_expires_at ON token_blacklist(expires_at);
+
+-- +goose Down
+
+DROP TABLE IF EXISTS token_blacklist;
+DROP TABLE IF EXISTS sessions;
