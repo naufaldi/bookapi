@@ -7,6 +7,16 @@
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen)
 
+---
+
+**Collaboration with <3**
+
+<a href="https://bit.ly/49t6aTh">
+  <img src="docs/minimax-banner.png" alt="Get Discount Coding Plan 12$" width="100%">
+</a>
+
+---
+
 A production-ready REST API for tracking books you've read, want to read, or are currently reading. Built with Go, PostgreSQL, and Docker.
 
 [Features](#-features) • [Quick Start](#-quick-start) • [API Documentation](#-api-documentation) • [Deployment](#-deployment) • [Contributing](#-contributing)
