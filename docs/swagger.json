@@ -1132,6 +1132,7 @@
                 "error": {
                     "$ref": "#/definitions/httpx.ErrorResponseBody"
                 },
+                "meta": {},
                 "success": {
                     "type": "boolean"
                 }

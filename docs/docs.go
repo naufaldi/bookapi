@@ -1134,6 +1134,7 @@ const docTemplate = `{
                 "error": {
                     "$ref": "#/definitions/httpx.ErrorResponseBody"
                 },
+                "meta": {},
                 "success": {
                     "type": "boolean"
                 }
@@ -1255,7 +1256,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:8080",
+	Host:             "book-api.faldi.xyz",
 	BasePath:         "/",
 	Schemes:          []string{"http", "https"},
 	Title:            "Personal Book Tracking API",
