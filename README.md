@@ -15,6 +15,8 @@
   <img src="docs/minimax-banner.png" alt="Get Discount Coding Plan 12$" width="100%">
 </a>
 
+**[Get 12$ Discount →](https://bit.ly/49t6aTh)**
+
 ---
 
 A production-ready REST API for tracking books you've read, want to read, or are currently reading. Built with Go, PostgreSQL, and Docker.
