@@ -1,6 +1,6 @@
 -- Migration for Catalog and Ingestion history
 
-CREATE TABLE catalog_books (
+CREATE TABLE IF NOT EXISTS catalog_books (
     isbn13 VARCHAR(13) PRIMARY KEY,
     title TEXT NOT NULL,
     subtitle TEXT,
@@ -14,7 +14,7 @@ CREATE TABLE catalog_books (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_catalog_books_search_vector ON catalog_books USING GIN(search_vector);
+CREATE INDEX IF NOT EXISTS idx_catalog_books_search_vector ON catalog_books USING GIN(search_vector);
 
 -- Trigger function to update search_vector for catalog_books
 CREATE OR REPLACE FUNCTION catalog_books_search_trigger() RETURNS trigger AS $$
@@ -28,10 +28,12 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
+
+DROP TRIGGER IF EXISTS tsvector_update_catalog ON catalog_books;
 CREATE TRIGGER tsvector_update_catalog BEFORE INSERT OR UPDATE
 ON catalog_books FOR EACH ROW EXECUTE FUNCTION catalog_books_search_trigger();
 
-CREATE TABLE catalog_authors (
+CREATE TABLE IF NOT EXISTS catalog_authors (
     key VARCHAR(50) PRIMARY KEY,
     name TEXT NOT NULL,
     birth_date TEXT,
@@ -39,7 +41,7 @@ CREATE TABLE catalog_authors (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE catalog_sources (
+CREATE TABLE IF NOT EXISTS catalog_sources (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     entity_type VARCHAR(20) NOT NULL, -- 'BOOK' or 'AUTHOR'
     entity_key VARCHAR(50) NOT NULL,
@@ -49,7 +51,7 @@ CREATE TABLE catalog_sources (
     UNIQUE(entity_type, entity_key, provider)
 );
 
-CREATE TABLE ingest_runs (
+CREATE TABLE IF NOT EXISTS ingest_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     finished_at TIMESTAMPTZ,
@@ -64,13 +66,13 @@ CREATE TABLE ingest_runs (
     error TEXT
 );
 
-CREATE TABLE ingest_run_books (
+CREATE TABLE IF NOT EXISTS ingest_run_books (
     run_id UUID REFERENCES ingest_runs(id) ON DELETE CASCADE,
     isbn13 VARCHAR(13) REFERENCES catalog_books(isbn13) ON DELETE CASCADE,
     PRIMARY KEY (run_id, isbn13)
 );
 
-CREATE TABLE ingest_run_authors (
+CREATE TABLE IF NOT EXISTS ingest_run_authors (
     run_id UUID REFERENCES ingest_runs(id) ON DELETE CASCADE,
     author_key VARCHAR(50) REFERENCES catalog_authors(key) ON DELETE CASCADE,
     PRIMARY KEY (run_id, author_key)

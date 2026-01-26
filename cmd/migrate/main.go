@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/joho/godotenv"
 	"github.com/pressly/goose/v3"
 )
 
@@ -21,7 +20,7 @@ func main() {
 	)
 	flag.Parse()
 
-	_ = godotenv.Load(".env.local")
+	loadEnvFiles()
 
 	dsn := os.Getenv("DB_DSN")
 	if dsn == "" {
@@ -41,7 +40,7 @@ func main() {
 	goose.SetBaseFS(nil)
 	goose.SetDialect("postgres")
 
-	migrationsDir := "db/migrations"
+	migrationsDir := migrationsDir()
 
 	switch *command {
 	case "up":

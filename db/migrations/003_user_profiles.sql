@@ -1,8 +1,8 @@
-ALTER TABLE users ADD COLUMN bio TEXT;
-ALTER TABLE users ADD COLUMN location VARCHAR(255);
-ALTER TABLE users ADD COLUMN website VARCHAR(500);
-ALTER TABLE users ADD COLUMN is_public BOOLEAN DEFAULT true;
-ALTER TABLE users ADD COLUMN reading_preferences JSONB;
-ALTER TABLE users ADD COLUMN last_login_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS location VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS website VARCHAR(500);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT true;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reading_preferences JSONB;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 
-CREATE INDEX idx_users_public ON users(is_public) WHERE is_public = true;
+CREATE INDEX IF NOT EXISTS idx_users_public ON users(is_public) WHERE is_public = true;

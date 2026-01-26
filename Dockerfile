@@ -31,6 +31,9 @@ RUN addgroup -g 1000 app && adduser -u 1000 -G app -s /bin/sh -D app
 COPY --from=builder /app/api /app/
 COPY --from=builder /app/migrate /app/
 
+# Copy DB migrations for "migrate" command
+COPY --from=builder /app/db/migrations /app/db/migrations
+
 # Create logs directory
 RUN mkdir -p /app/logs && chown -R app:app /app
 
