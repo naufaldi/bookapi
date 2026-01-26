@@ -78,6 +78,39 @@ func JSONSuccessCreated(w http.ResponseWriter, r *http.Request, data interface{}
 	})
 }
 
+func JSONSuccessAccepted(w http.ResponseWriter, r *http.Request, data interface{}, meta interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+
+	requestID := RequestIDFrom(r)
+	metaMap := make(map[string]interface{})
+	if meta != nil {
+		if m, ok := meta.(map[string]interface{}); ok {
+			metaMap = m
+		} else if m, ok := meta.(map[string]any); ok {
+			metaMap = m
+		}
+	}
+	if requestID != "" {
+		metaMap["request_id"] = requestID
+	}
+
+	var finalMeta interface{}
+	if len(metaMap) > 0 {
+		finalMeta = metaMap
+	} else if requestID != "" {
+		finalMeta = map[string]string{"request_id": requestID}
+	} else if meta != nil {
+		finalMeta = meta
+	}
+
+	json.NewEncoder(w).Encode(SuccessResponse{
+		Success: true,
+		Data:    data,
+		Meta:    finalMeta,
+	})
+}
+
 func JSONSuccessNoContent(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNoContent)
 }
