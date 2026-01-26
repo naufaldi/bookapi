@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: bookapi-db
+    environment:
+      - POSTGRES_USER=bookapi
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=bookapi
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - bookapi-private
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bookapi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api:
+    build: .
+    container_name: bookapi-api
+    command: ./api
+    environment:
+      - APP_ADDR=${APP_ADDR}
+      - DB_DSN=${DB_DSN}
+      - JWT_SECRET=${JWT_SECRET}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - MAX_REQUEST_SIZE_MB=${MAX_REQUEST_SIZE_MB}
+      - ENABLE_HSTS=${ENABLE_HSTS}
+    networks:
+      - edge
+      - bookapi-private
+    labels:
+      - "caddy=book-api.faldi.xyz"
+      - "caddy.reverse_proxy={{upstreams 8080}}"
+      - "com.centurylinklabs.watchtower.enable=true"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:
+
+networks:
+  edge:
+    external: true
+  bookapi-private:
+    name: bookapi-private
+    internal: true
