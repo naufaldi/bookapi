@@ -1,6 +1,6 @@
 ---
 name: phase-2-remaining-no-epic6
-overview: "Complete the remaining RFC Phase-2 work (excluding Epic 6): enforce /v1 routing, fix PATCH /me/profile registration, harden Postgres data layer (timeouts + migrations + indexes), and register catalog routes. Keep observability simple: logs + request_id correlation + health/readiness checks for Docker+Caddy VPS operation."
+overview: 'Complete the remaining RFC Phase-2 work (excluding Epic 6): enforce /v1 routing, fix PATCH /me/profile registration, harden Postgres data layer (timeouts + migrations + indexes), and register catalog routes. Keep observability simple: logs + request_id correlation + health/readiness checks for Docker+Caddy VPS operation.'
 todos:
   - id: v1-routing
     content: Enforce /v1-only routing and fix PATCH /v1/me/profile registration in cmd/api/main.go
@@ -18,7 +18,7 @@ todos:
     content: Register catalog routes in cmd/api/main.go for GET /v1/catalog/search and GET /v1/catalog/books/{isbn}
     status: completed
   - id: ops-runbook
-    content: "Update operator documentation for Docker+Caddy: log viewing, request_id correlation, health/readiness checks"
+    content: 'Update operator documentation for Docker+Caddy: log viewing, request_id correlation, health/readiness checks'
     status: completed
 isProject: false
 ---
@@ -27,7 +27,7 @@ isProject: false
 
 ## 1. User Stories
 
-- US-1: As an **API Developer**, I want all endpoints under **`/v1`** so that client integrations are consistent and future versioning is easy. Priority: High
+- US-1: As an **API Developer**, I want all endpoints under `**/v1` so that client integrations are consistent and future versioning is easy. Priority: High
 - US-2: As a **Reader**, I want the catalog endpoints available so that book lookups/search work without code changes. Priority: Medium
 - US-3: As an **Operator**, I want **DB queries to time out** so that slow queries don’t wedge the API under load. Priority: High
 - US-4: As an **Operator**, I want **repeatable DB migrations** so that deployments to a VPS are safe and deterministic. Priority: High
@@ -35,7 +35,7 @@ isProject: false
 
 ## 2. Acceptance Criteria
 
-- AC-1: Given a request to any API endpoint, When the request path does not start with `/v1`, Then the server responds with 404 (or routes are absent) and only `/v1/*` is served.
+- AC-1: Given a request to any API endpoint, When the request path does not start with `/v1`, Then the server responds with 404 (or routes are absent) and only `/v1/` is served.
 - AC-2: Given a request to `PATCH /v1/me/profile`, When the route is invoked with valid auth, Then the request is handled by the profile handler (not 404/misrouted).
 - AC-3: Given a request to `GET /v1/catalog/books/{isbn}`, When the route is hit, Then the existing catalog handler is executed (route is registered in `cmd/api/main.go`).
 - AC-4: Given a request to `GET /v1/catalog/search?...`, When the route is hit, Then the search handler is executed and returns a consistent response envelope.
@@ -86,7 +86,7 @@ isProject: false
 
 ### Design Patterns
 
-- Middleware pipeline (existing `internal/httpx/*` middlewares).
+- Middleware pipeline (existing `internal/httpx/` middlewares).
 - Clean Architecture module boundaries (`internal/<feature>/service.go`, `postgres_repo.go`, `http_handler.go`).
 - Dependency Injection in `cmd/api/main.go` for repos/services/handlers.
 - “Ports & adapters” for repo interfaces and DB implementations.
@@ -110,17 +110,17 @@ flowchart TD
 
 ### Epic 2: API Contract & v1 (complete remaining)
 
-- Update routing in [`cmd/api/main.go`](cmd/api/main.go) to register **only** `/v1/*` endpoints.
+- Update routing in `[cmd/api/main.go](cmd/api/main.go)` to register **only** `/v1/` endpoints.
 - Fix the routing bug so `PATCH /v1/me/profile` is correctly registered (ensure pattern/method matches the handler).
 - Add/verify consistent response envelope usage for the endpoints touched by routing changes.
 
 ### Epic 3: Data Layer Hardening
 
-- Add a configurable DB query timeout to the app config (existing `Config` struct in [`cmd/api/main.go`](cmd/api/main.go)), and thread it into repo constructors.
+- Add a configurable DB query timeout to the app config (existing `Config` struct in `[cmd/api/main.go](cmd/api/main.go)`), and thread it into repo constructors.
 - Update all `postgres_repo.go` implementations to wrap DB calls with `context.WithTimeout(ctx, cfg.DBQueryTimeout)`.
-  - Targets likely include: [`internal/book/postgres_repo.go`](internal/book/postgres_repo.go), [`internal/user/postgres_repo.go`](internal/user/postgres_repo.go), [`internal/session/postgres_repo.go`](internal/session/postgres_repo.go), [`internal/catalog/postgres_repo.go`](internal/catalog/postgres_repo.go), [`internal/ingest/postgres_repo.go`](internal/ingest/postgres_repo.go), [`internal/readinglist/postgres_repo.go`](internal/readinglist/postgres_repo.go), [`internal/rating/postgres_repo.go`](internal/rating/postgres_repo.go), [`internal/profile/service.go`](internal/profile/service.go) (where it hits repos).
+  - Targets likely include: `[internal/book/postgres_repo.go](internal/book/postgres_repo.go)`, `[internal/user/postgres_repo.go](internal/user/postgres_repo.go)`, `[internal/session/postgres_repo.go](internal/session/postgres_repo.go)`, `[internal/catalog/postgres_repo.go](internal/catalog/postgres_repo.go)`, `[internal/ingest/postgres_repo.go](internal/ingest/postgres_repo.go)`, `[internal/readinglist/postgres_repo.go](internal/readinglist/postgres_repo.go)`, `[internal/rating/postgres_repo.go](internal/rating/postgres_repo.go)`, `[internal/profile/service.go](internal/profile/service.go)` (where it hits repos).
 - Introduce goose-based migration management:
-  - Add a migration CLI (e.g. [`cmd/migrate/main.go`](cmd/migrate/main.go)) that runs `goose up/down/status` against the configured DB.
+  - Add a migration CLI (e.g. `[cmd/migrate/main.go](cmd/migrate/main.go)`) that runs `goose up/down/status` against the configured DB.
   - Ensure it points to `db/migrations/`.
 - Add a new migration to create missing indexes:
   - `users(email)`
@@ -129,7 +129,7 @@ flowchart TD
 
 ### Epic 4: Catalog routes registration
 
-- Register catalog routes in [`cmd/api/main.go`](cmd/api/main.go):
+- Register catalog routes in `[cmd/api/main.go](cmd/api/main.go)`:
   - `GET /v1/catalog/search`
   - `GET /v1/catalog/books/{isbn}`
 - Ensure handlers return the standard envelope and include request_id in meta.
@@ -148,21 +148,21 @@ flowchart TD
 
 - Verify `X-Request-Id` is preserved end-to-end when behind Caddy (document recommended `header_up X-Request-Id {http.request.id}` usage).
 - Verify `/healthz` and `/readyz` are present and documented for Docker healthchecks.
-- Add/extend an operator runbook section (likely [`README.md`](README.md) or [`docs/rfc/phase-2.md`](docs/rfc/phase-2.md) depending on project convention) with:
+- Add/extend an operator runbook section (likely `[README.md](README.md)` or `[docs/rfc/phase-2.md](docs/rfc/phase-2.md)` depending on project convention) with:
   - Docker log commands
   - Request-id correlation workflow
   - Basic “find 4xx/5xx” and “find panics” commands
 
 ## Verification Checklist
 
-- [ ] All user stories addressed
-- [ ] All acceptance criteria met
-- [ ] Edge cases handled
-- [ ] Code follows project style (thin handlers, logic in services)
-- [ ] Functions reused where possible
-- [ ] Routing verified: only `/v1/*` endpoints are served
-- [ ] `/healthz` and `/readyz` verified behind Docker+Caddy
-- [ ] Tests updated/added for routing changes and repo timeouts
-- [ ] `go test ./...` passes
-- [ ] `go vet ./...` passes
-- [ ] `go build ./...` passes
+- All user stories addressed
+- All acceptance criteria met
+- Edge cases handled
+- Code follows project style (thin handlers, logic in services)
+- Functions reused where possible
+- Routing verified: only `/v1/` endpoints are served
+- `/healthz` and `/readyz` verified behind Docker+Caddy
+- Tests updated/added for routing changes and repo timeouts
+- `go test ./...` passes
+- `go vet ./...` passes
+- `go build ./...` passes

@@ -1,8 +1,14 @@
-# 📖 RFC: Personal Book Tracking API
+# RFC: Personal Book Tracking API
+
+Unified specification for the Book Tracking API, combining core API design, implementation phases, and production readiness.
+
+---
+
+# Part I: Core API
 
 ## 1. Motivation
 
-A REST API to help users track books they’ve read, want to read, or are currently reading. Inspired by Goodreads, but lightweight and personal.
+A REST API to help users track books they've read, want to read, or are currently reading. Inspired by Goodreads, but lightweight and personal.
 
 ---
 
@@ -42,7 +48,7 @@ A REST API to help users track books they’ve read, want to read, or are curren
 - `201 Created` → new resource added (register, add to wishlist).
 - `400 Bad Request` → invalid input (missing title, bad rating).
 - `401 Unauthorized` → not logged in for private endpoints.
-- `404 Not Found` → book or user doesn’t exist.
+- `404 Not Found` → book or user doesn't exist.
 
 Validation:
 
@@ -57,21 +63,25 @@ Validation:
 *As a user…*
 
 1. **Registration & Login**
-    - I can create an account with email/password.
-    - I can log in and receive a token to use for other endpoints.
+   - I can create an account with email/password.
+   - I can log in and receive a token to use for other endpoints.
 2. **Browse Books**
-    - I can see all books without logging in.
-    - I can search/filter books by genre or publisher.
-    - I can open a single book’s detail page.
+   - I can see all books without logging in.
+   - I can search/filter books by genre or publisher.
+   - I can open a single book's detail page.
 3. **Wishlist & Reading Progress**
-    - I can add books I want to read into my wishlist.
-    - I can move a book from wishlist → currently reading.
-    - I can mark a book as finished and see my finished list.
+   - I can add books I want to read into my wishlist.
+   - I can move a book from wishlist → currently reading.
+   - I can mark a book as finished and see my finished list.
 4. **Rating**
-    - I can give a star rating (1–5) to a book I’ve finished.
-    - I can see the average rating of any book, and my own rating if logged in.
+   - I can give a star rating (1–5) to a book I've finished.
+   - I can see the average rating of any book, and my own rating if logged in.
 
-    # DBML
+---
+
+# Part II: Data Model
+
+## 6. DBML Schema
 
 ```sql
 Project BookLibrary {
@@ -134,7 +144,7 @@ Ref: ratings.user_id > users.id
 Ref: ratings.book_id > books.id
 ```
 
-# SQL
+## 7. SQL DDL
 
 ```sql
 CREATE TABLE users (
@@ -181,39 +191,40 @@ CREATE TABLE user_books (
 
 -- Index for fast lookup by user + status
 CREATE INDEX idx_user_books_user_status ON user_books (user_id, status);
-
 ```
 
 ---
 
-## 6. Implementation Plan (Phase 1-5 Enhancements)
+# Part III: Implementation Phases 1–5
+
+## 8. Implementation Plan Overview
 
 ### Current Implementation Status
 
 **Already Implemented:**
-- ✅ JWT-based authentication (`internal/auth`)
-- ✅ bcrypt password hashing
-- ✅ Basic auth middleware
-- ✅ Manual input validation (basic checks in handlers)
-- ✅ Swagger/OpenAPI annotations (partial)
-- ✅ PostgreSQL with pgx/v5
-- ✅ Database schema: users, books, ratings, user_books
-- ✅ Basic CRUD endpoints
+- JWT-based authentication (`internal/auth`)
+- bcrypt password hashing
+- Basic auth middleware
+- Manual input validation (basic checks in handlers)
+- Swagger/OpenAPI annotations (partial)
+- PostgreSQL with pgx/v5
+- Database schema: users, books, ratings, user_books
+- Basic CRUD endpoints
 
 **To Be Implemented (Phase 1-5):**
-- ❌ CORS middleware
-- ❌ Request size limits & security headers
-- ❌ Input validation library (`validator/v10`)
-- ❌ Session management & refresh tokens
-- ❌ Logout endpoint with token blacklist
-- ❌ User profile fields & endpoints
-- ❌ Full-text search with PostgreSQL
-- ❌ Advanced filtering & sorting
-- ❌ Consistent API response format
+- CORS middleware
+- Request size limits & security headers
+- Input validation library (`validator/v10`)
+- Session management & refresh tokens
+- Logout endpoint with token blacklist
+- User profile fields & endpoints
+- Full-text search with PostgreSQL
+- Advanced filtering & sorting
+- Consistent API response format
 
 ---
 
-## 7. Phase 1: Basic Security Hardening
+## 9. Phase 1: Basic Security Hardening
 
 ### New Endpoints
 *No new endpoints - middleware enhancements only*
@@ -282,7 +293,7 @@ CREATE INDEX idx_user_books_user_status ON user_books (user_id, status);
 
 ---
 
-## 8. Phase 2: Authentication & Session Management
+## 10. Phase 2: Authentication & Session Management
 
 ### New Endpoints
 
@@ -446,7 +457,7 @@ CREATE INDEX idx_token_blacklist_expires_at ON token_blacklist(expires_at);
 
 ---
 
-## 9. Phase 3: User Profile Management
+## 11. Phase 3: User Profile Management
 
 ### New Endpoints
 
@@ -592,7 +603,7 @@ CREATE INDEX idx_users_public ON users(is_public) WHERE is_public = true;
 
 ---
 
-## 10. Phase 4: Advanced Search & Filtering
+## 12. Phase 4: Advanced Search & Filtering
 
 ### Enhanced Endpoints
 
@@ -720,7 +731,7 @@ CREATE INDEX idx_books_title_trgm ON books USING GIN(title gin_trgm_ops);
 
 ---
 
-## 11. Phase 5: Better API Documentation
+## 13. Phase 5: Better API Documentation
 
 ### API Response Standards
 
@@ -795,7 +806,314 @@ func (h *ProfileHandler) GetOwnProfile(w http.ResponseWriter, r *http.Request) {
 
 ---
 
-## 12. Migration & Deployment Strategy
+# Part IV: Phase 2 Production (Catalog & Observability)
+
+## 14. Context
+
+The `bookapi` project has successfully implemented its first 5 phases of security hardening and basic authentication. As we move towards a production-ready system and look to provide a richer experience for users, we need to address two major areas:
+1. **Production Hygiene & Observability**: Ensuring the system is robust, observable, and follows API best practices.
+2. **Book Catalog Integration**: Integrating with Open Library to provide a massive, searchable book database, which also serves as a learning ground for advanced SQL queries, full-text search, and performance tuning at scale.
+
+## 15. Goals
+
+- Achieve "production-ready" runtime hygiene (graceful shutdown, timeouts, structured config).
+- Implement a robust observability baseline (request IDs, access logs, panic recovery).
+- Standardize the API contract with versioning (`/v1`) and consistent response envelopes.
+- Implement a **Catalog** feature that fetches and caches book metadata from Open Library.
+- Build a **Cron Ingestion Job** to populate the local database with realistic book data for learning purposes.
+
+## 16. Non-Goals
+
+- Building a full Administrative UI.
+- Implementing a distributed asynchronous job system (like Celery or Temporal) - a simple cron/internal trigger is sufficient for now.
+- Full OpenTelemetry tracing (Otel) - logs and basic metrics are the priority.
+- Generating client SDKs.
+
+## 17. User Stories (Production)
+
+### Reader / API Developer
+- As a **Reader**, I want to search for books by title, author, or genre across a large catalog so I can find new books to read.
+- As an **API Developer**, I want a consistent API versioning and response format so I can easily integrate with the `bookapi`.
+- As a **Reader**, I want to see detailed metadata (page counts, languages, cover images) for books I find.
+
+### Operator / System Developer
+- As an **Operator**, I want the server to shut down gracefully so that in-flight requests are not abruptly terminated during deployments.
+- As a **Developer**, I want to see a unique Request-ID in every log entry and error response so I can easily trace issues in production.
+- As an **Operator**, I want the ingestion job to be idempotent and respect Open Library's rate limits so our service remains a good citizen of the web.
+
+## 18. Architecture
+
+### System Flow: Cron Ingestion with Materialization
+
+The ingestion process discovers books via the Open Library Search API, hydrates detailed metadata via the Books API, stores raw data in `catalog_books`/`catalog_sources` (source-of-truth), and then materializes into the `books` table so `/books` endpoints show ingested data.
+
+**Why keep `catalog_books` separate?**
+- Open Library data can be incomplete or inconsistent.
+- Keeping upstream data separate allows us to evolve mapping rules (genre defaults, publisher parsing, etc.) without losing provenance.
+- `catalog_sources` stores raw JSON for debugging and reprocessing.
+
+```mermaid
+flowchart TD
+  OpenLibrary[OpenLibraryAPI] --> IngestService
+
+  IngestService -->|upsert_raw| CatalogBooks[(catalog_books)]
+  IngestService -->|upsert_raw| CatalogSources[(catalog_sources)]
+  IngestService -->|record_run| IngestRuns[(ingest_runs)]
+
+  IngestService -->|materialize_upsert| Books[(books)]
+
+  Books --> BooksList[GET_/books]
+  Books --> BookByISBN[GET_/books/isbn]
+
+  ReadingListAPI[ReadingListAPI] --> UserBooks[(user_books)]
+  UserBooks --> Books
+
+  RatingsAPI[RatingsAPI] --> Ratings[(ratings)]
+  Ratings --> Books
+```
+
+### Request Flow: Books API (Materialized from Catalog)
+
+Users browse books via `GET /books` and `GET /books/{isbn}`, which query the `books` table. This table is populated by the ingestion job's materialization step, which transforms `catalog_books` data into the app's normalized schema.
+
+**Materialization Rules:**
+- `books.genre = <subject>` (the discovery subject used during ingestion, e.g., "fiction", "history", "science")
+- `books.publisher = "Unknown"` if missing from Open Library
+- ISBN preference: 13-digit when available
+- Other fields map directly from `catalog_books` (title, subtitle, description, cover_url, etc.)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Handler as Book Handler
+    participant Service as Book Service
+    participant Repo as Book Repo
+    participant DB as Postgres
+
+    User->>Handler: GET /books or GET /books/{isbn}
+    Handler->>Service: List(q) or GetByISBN(isbn)
+    Service->>Repo: Query books table
+    Repo->>DB: SELECT FROM books ...
+    DB-->>Repo: Book Data
+    Repo-->>Service: Book(s)
+    Service-->>Handler: Book(s)
+    Handler-->>User: JSON Response
+```
+
+### Module Design
+
+- `internal/catalog/`: Handles local caching and serving of book metadata.
+- `internal/platform/openlibrary/`: A dedicated client for Open Library APIs.
+- `internal/ingest/`: Logic for the batch ingestion process.
+- `internal/httpx/`: Extensions for request IDs, logging, and recovery middleware.
+
+## 19. Catalog Data Model
+
+### `catalog_books`
+Stores normalized book data for fast searching and display.
+- `isbn13` (PK)
+- `title`, `subtitle`, `description`
+- `cover_url`
+- `published_date`, `publisher`
+- `language`, `page_count`
+- `search_vector` (TSVECTOR for FTS)
+- `updated_at` (to track cache freshness)
+
+### `catalog_sources`
+Stores the raw JSON from providers for future re-processing without re-fetching.
+- `isbn13` (PK)
+- `provider` (e.g., 'OPEN_LIBRARY')
+- `raw_json` (JSONB)
+- `fetched_at`
+
+## 20. Catalog API Design
+
+### Versioning
+All new endpoints are prefixed with `/v1`. Existing endpoints will eventually be migrated or deprecated.
+
+### Standard Response Envelope
+All responses follow this format:
+```json
+{
+  "success": true,
+  "data": { ... },
+  "meta": { "request_id": "..." }
+}
+```
+
+### Endpoints
+- `GET /books`: List books with search/filtering (queries the `books` table, populated by ingestion materialization).
+- `GET /books/{isbn}`: Get book details by ISBN (queries the `books` table).
+- `POST /internal/jobs/ingest`: (Protected) Manually trigger the Open Library ingestion job, which upserts into `catalog_books` and then materializes into `books`.
+
+**Note**: Catalog-specific endpoints (`/v1/catalog/*`) provide access to the master catalog. The main API is `/books`, which shows ingested data after materialization.
+
+## 21. Open Library Ingestion Spec
+
+### API References
+- **Search API**: `https://openlibrary.org/search.json?q={subject}&fields=key,title,author_name,isbn,first_publish_year,language&limit=100`
+- **Books API (Data)**: `https://openlibrary.org/api/books?bibkeys=ISBN:{isbn1},ISBN:{isbn2}&jscmd=data&format=json`
+
+### Strategy
+1. **Discovery**: Use the Search API to find books by popular subjects (e.g., 'fiction', 'science', 'history').
+2. **Hydration**: Collect ISBNs and fetch full details in batches of 50-100 using the Books API.
+3. **Storage**:
+   - Upsert into `catalog_books` (source-of-truth for Open Library data).
+   - Cache the raw JSON in `catalog_sources` for debugging/reprocessing.
+   - **Materialize** into `books` table (app-facing normalized schema) so `/books` endpoints show ingested data.
+4. **Rate Limiting**:
+   - Set a descriptive `User-Agent`: `BookAPI/1.0 (contact: your-email@example.com)`.
+   - Implement exponential backoff for 429/5xx errors.
+   - Limit to 1 request per second to remain a good citizen.
+5. **Freshness**: Use an `updated_at` column to ensure we don't re-fetch a book more than once every 7 days unless forced.
+
+### Incremental Ingestion Semantics (100 today → 200 tomorrow)
+
+We interpret ingestion limits as **desired total unique rows** in our local database (not "fetch this many every run").
+
+- Example behavior:
+  - Day 1 config: `INGEST_BOOKS_MAX=100` → ingest until `catalog_books` contains ~100 unique books.
+  - Day 2 config: `INGEST_BOOKS_MAX=200` → ingest only the *missing* unique books to reach ~200 total.
+- If the configured max decreases, we **do not delete** existing data; it only affects future ingestion runs.
+
+This makes ingestion deterministic for learning purposes while allowing the dataset to grow over time.
+
+### Run History (compare runs / learning SQL)
+
+- Add tables:
+  - `ingest_runs`: one row per run (started_at, finished_at, config snapshot, counters).
+  - `ingest_run_books`: join table `(run_id, isbn13)`.
+  - `ingest_run_authors`: join table `(run_id, author_key)`.
+- Practical uses:
+  - Find which books were newly added in the latest run.
+  - Compare two runs (what changed, what was skipped due to freshness).
+  - Measure ingestion performance over time (duration, error rates).
+
+### Testing Requirements (Cron/Job Ingestion)
+
+- **Incremental target behavior**: when max increases (100 → 200), only missing unique rows are added.
+- **Dedupe**: repeated ISBNs/author keys do not create duplicates.
+- **Batching**: Books API bibkeys batching logic is correct.
+- **Freshness**: recently fetched records are skipped unless forced.
+- **Run history**: `ingest_runs` and join tables are recorded consistently.
+
+## 22. Security & Observability
+
+**Status**: COMPLETE - All observability features implemented and documented.
+
+### Runtime Hygiene
+- **Graceful Shutdown**: Handle `SIGTERM` and `SIGINT` to allow the server to finish processing requests.
+- **HTTP Hardening**: Set `ReadHeaderTimeout: 5 * time.Second` and `MaxHeaderBytes: 1 << 20` (1MB).
+- **Structured Config**: Single `Config` struct with validation.
+
+### Observability
+- **Request ID**: Every request gets a UUID in the `X-Request-Id` header, propagated through logs and responses.
+- **Access Logs**: Log `method`, `path`, `status`, `duration_ms`, `request_id`, and `user_id`.
+- **Panic Recovery**: Catch panics and return a clean JSON 500 error with the `request_id`.
+
+### Operator: Accessing Observability (VPS + Docker + Caddy)
+
+#### Viewing API Logs
+
+**Docker Compose:**
+```bash
+docker compose logs -f api
+docker compose logs --tail=100 api
+docker compose logs api | grep "request_id=abc123-def456"
+```
+
+**Docker (standalone):**
+```bash
+docker logs -f bookapi-api
+docker logs --tail=100 bookapi-api
+docker logs bookapi-api | grep "request_id=abc123-def456"
+```
+
+#### Correlating Requests by Request ID
+
+Every HTTP response includes:
+1. **Header**: `X-Request-Id: <uuid>`
+2. **JSON meta field**: `{"success": true, "data": {...}, "meta": {"request_id": "<uuid>"}}`
+
+**To trace a request:**
+1. Get the request ID from a client error response.
+2. Search API logs: `docker compose logs api | grep "request_id=abc123-def456"`
+
+**Example log output:**
+```
+access method=GET path=/books/1234567890123 status=200 duration_ms=45 request_id=abc123-def456-7890 user_id=user-123
+```
+
+#### Health and Readiness Checks
+
+**Health check (liveness):**
+```bash
+curl http://localhost:8080/healthz
+# Returns: ok (200 OK)
+```
+
+**Readiness check (database connectivity):**
+```bash
+curl http://localhost:8080/readyz
+# Returns: ready (200 OK) or db not ready (503)
+```
+
+#### Common Debugging Workflows
+
+1. **Find slow requests (>1000ms):** `docker compose logs api | grep "duration_ms=[0-9][0-9][0-9][0-9]"`
+2. **Find all errors (4xx/5xx):** `docker compose logs api | grep -E "status=[45][0-9][0-9]"`
+3. **Find requests for a specific user:** `docker compose logs api | grep "user_id=user-123"`
+4. **Find panics:** `docker compose logs api | grep "panic recovered"`
+5. **Monitor real-time access:** `docker compose logs -f api | grep "access"`
+
+## 23. Epics and Task Breakdown
+
+### Epic 0: Runtime Hygiene & Config - COMPLETE
+- [x] Implement `Config` struct and validation in `cmd/api/main.go`.
+- [x] Implement graceful shutdown using `context.WithCancel` and `http.Server.Shutdown`.
+- [x] Configure `ReadHeaderTimeout` and `MaxHeaderBytes` for the HTTP server.
+
+### Epic 1: Observability Baseline - COMPLETE
+- [x] Create `httpx.RequestIDMiddleware`.
+- [x] Create `httpx.AccessLogMiddleware`.
+- [x] Create `httpx.RecoveryMiddleware`.
+- [x] Integrate middlewares into `main.go`.
+- [x] Update `httpx.JSONSuccess` and `httpx.JSONError` to include request_id in meta.
+- [x] Update `httpx.AuthMiddleware` to use JSON errors with request_id.
+
+### Epic 2: API Contract & v1 - PARTIAL
+- [x] Update `httpx.JSONSuccess` and `httpx.JSONError` to include the standard envelope.
+- [ ] Wrap all routes in a `/v1` router or prefix.
+- [ ] Fix routing bug: Ensure `PATCH /me/profile` is correctly registered.
+
+### Epic 3: Data Layer Hardening - TODO
+- [ ] Add context timeouts to all `PostgresRepo` methods.
+- [ ] Implement `goose` or similar for migration management.
+- [ ] Add missing indexes for `users(email)`, `sessions(user_id)`, and `reading_list(user_id)`.
+
+### Epic 4: Catalog & Open Library Client - COMPLETE
+- [x] Implement the `openlibrary.Client` with `User-Agent` and timeout settings.
+- [x] Create migrations for `catalog_books` and `catalog_sources`.
+- [x] Implement `catalog.Service` with read-through caching logic.
+- [x] Implement `GET /v1/catalog/books/{isbn}` handler.
+- [ ] Register catalog routes in `main.go` (`GET /v1/catalog/search`, `GET /v1/catalog/books/{isbn}`).
+
+### Epic 5: Ingestion Job (Cron) - COMPLETE
+- [x] Create the ingestion job logic (Discovery -> Hydration -> Upsert).
+- [x] Implement batching and rate-limiting/backoff in the ingest service.
+- [x] Add `POST /internal/jobs/ingest` endpoint (protected by internal secret).
+
+### Epic 6: SQL & Search Learning (Exercises) - TODO
+- [ ] Populate the DB with 10k+ books from Open Library.
+- [ ] Experiment with `EXPLAIN ANALYZE` on complex search queries.
+- [ ] Tune PostgreSQL Full-Text Search weights and ranking (`ts_rank`).
+- [ ] Compare performance of offset-based vs cursor-based pagination on large datasets.
+
+---
+
+# Part V: Migration & Deployment
+
+## 24. Migration & Deployment Strategy
 
 ### Step 1: Database Migrations
 ```bash
@@ -837,22 +1155,24 @@ curl "http://localhost:8080/books?search=fiction&min_rating=4.0"
 ```
 
 ### Breaking Changes
-⚠️ **Phase 5 Response Format** - All endpoints will return new JSON structure
+**Phase 5 Response Format** - All endpoints will return new JSON structure
 - Coordinate with frontend team
 - Update API clients
 - Test thoroughly before production
 
 ---
 
-## 13. Success Criteria
+# Part VI: Success Criteria
 
-- ✅ All automated tests pass
-- ✅ Swagger UI shows all endpoints with complete docs
-- ✅ CORS headers present in browser DevTools
-- ✅ Search returns results in < 200ms (95th percentile)
-- ✅ Password strength validation prevents weak passwords
-- ✅ Logout invalidates tokens
-- ✅ Session management works correctly
-- ✅ Profile CRUD operations functional
-- ✅ Advanced filtering works as expected
-- ✅ Code coverage > 80% for new code
+## 25. Success Criteria
+
+- All automated tests pass
+- Swagger UI shows all endpoints with complete docs
+- CORS headers present in browser DevTools
+- Search returns results in < 200ms (95th percentile)
+- Password strength validation prevents weak passwords
+- Logout invalidates tokens
+- Session management works correctly
+- Profile CRUD operations functional
+- Advanced filtering works as expected
+- Code coverage > 80% for new code
