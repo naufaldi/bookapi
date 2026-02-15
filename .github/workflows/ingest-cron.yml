@@ -1,0 +1,29 @@
+name: Weekly Catalog Ingest
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+env:
+  INTERNAL_JOBS_SECRET: ${{ secrets.INTERNAL_JOBS_SECRET }}
+
+jobs:
+  trigger-ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger ingestion on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: INTERNAL_JOBS_SECRET
+          script: |
+            cd ~/projects/bookapi
+            docker run --rm --network bookapi-private \
+              -e INTERNAL_JOBS_SECRET \
+              curlimages/curl:latest \
+              -X POST \
+              -H "X-Internal-Secret: $INTERNAL_JOBS_SECRET" \
+              http://api:8080/internal/jobs/ingest

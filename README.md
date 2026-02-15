@@ -141,8 +141,65 @@ ENABLE_HSTS=false
 INGEST_ENABLED=false
 INGEST_BOOKS_MAX=100
 INGEST_AUTHORS_MAX=100
+INGEST_SUBJECTS=fiction,science,history
+INGEST_FRESH_DAYS=7
 INTERNAL_JOBS_SECRET=your-internal-cron-secret
 ```
+
+## Scheduled Ingestion
+
+The ingestion job is triggered via HTTP endpoint. To schedule regular catalog updates:
+
+### Trigger the Job Manually
+
+```bash
+curl -X POST http://localhost:8080/internal/jobs/ingest \
+  -H "X-Internal-Secret: your-internal-cron-secret"
+```
+
+### Schedule with System Cron
+
+```bash
+# Add to crontab (crontab -e)
+# Run daily at 2am
+0 2 * * * curl -X POST -H "X-Internal-Secret: your-internal-cron-secret" http://localhost:8080/internal/jobs/ingest
+```
+
+### Schedule with Docker Compose
+
+Add a scheduler service to `docker-compose.yml`:
+
+```yaml
+services:
+  scheduler:
+    image: alpine:latest
+    command: >
+      sh -c "while true; do sleep 86400 && curl -X POST -H \"X-Internal-Secret: $$INTERNAL_JOBS_SECRET\" http://api:8080/internal/jobs/ingest; done"
+    environment:
+      - INTERNAL_JOBS_SECRET=${INTERNAL_JOBS_SECRET}
+```
+
+### Schedule with GitHub Actions (VPS)
+
+When using the deploy workflow to a VPS, weekly ingestion runs automatically:
+
+- **Schedule**: Every Sunday at 00:00 UTC
+- **Workflow**: `.github/workflows/ingest-cron.yml`
+- **Manual run**: Actions → Weekly Catalog Ingest → Run workflow
+
+**Required**: Add `INTERNAL_JOBS_SECRET` to GitHub repository secrets (Settings → Secrets → Actions). Use the same value as in your VPS `.env`.
+
+### Ingestion Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INGEST_ENABLED` | `false` | Enable ingestion logic |
+| `INGEST_SUBJECTS` | `fiction,science,history` | Subjects to ingest |
+| `INGEST_BOOKS_MAX` | `100` | Target total unique books |
+| `INGEST_AUTHORS_MAX` | `100` | Target total unique authors |
+| `INGEST_BOOKS_BATCH_SIZE` | `50` | Books per API batch |
+| `INGEST_RPS` | `1` | Requests per second (rate limit) |
+| `INGEST_FRESH_DAYS` | `7` | Skip re-fetching if updated within N days |
 
 ## 📋 API Documentation
 

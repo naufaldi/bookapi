@@ -1103,6 +1103,95 @@ curl http://localhost:8080/readyz
 - [x] Implement batching and rate-limiting/backoff in the ingest service.
 - [x] Add `POST /internal/jobs/ingest` endpoint (protected by internal secret).
 
+### Epic 5b: Cron Scheduling - IMPLEMENTATION NOTE
+
+**Note:** The ingestion job is triggered via HTTP endpoint, not a built-in cron. This design allows for flexibility in scheduling while keeping the API simple.
+
+#### Triggering the Job
+
+The ingestion job is available at `POST /internal/jobs/ingest`:
+
+```bash
+curl -X POST http://localhost:8080/internal/jobs/ingest \
+  -H "X-Internal-Secret: your-secret"
+```
+
+**Response:** `202 Accepted` (job runs asynchronously)
+
+#### Scheduling Options
+
+**Option 1: System Cron**
+```bash
+# Run daily at 2am
+0 2 * * * curl -X POST -H "X-Internal-Secret: $INTERNAL_JOBS_SECRET" http://localhost:8080/internal/jobs/ingest
+```
+
+**Option 2: Kubernetes CronJob**
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bookapi-ingest
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: ingest
+            image: bookapi:latest
+            command: ["/bin/sh", "-c"]
+            args:
+            - curl -X POST -H "X-Internal-Secret: $INTERNAL_JOBS_SECRET" http://localhost:8080/internal/jobs/ingest
+            env:
+            - name: INTERNAL_JOBS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: bookapi-secrets
+                  key: internal-jobs-secret
+          restartPolicy: OnFailure
+```
+
+**Option 3: Docker Compose with Scheduler**
+
+Add a scheduler service to `docker-compose.yml`:
+```yaml
+services:
+  scheduler:
+    image: alpine:latest
+    command: >
+      sh -c "while true; do sleep 86400 && curl -X POST -H \"X-Internal-Secret: $$INTERNAL_JOBS_SECRET\" http://api:8080/internal/jobs/ingest; done"
+    environment:
+      - INTERNAL_JOBS_SECRET=${INTERNAL_JOBS_SECRET}
+```
+
+**Option 4: GitHub Actions (VPS deployment)**
+
+When deploying to VPS via GitHub Actions, a weekly cron runs automatically:
+
+- **Workflow**: `.github/workflows/ingest-cron.yml`
+- **Schedule**: Every Sunday at 00:00 UTC (`0 0 * * 0`)
+- **Manual trigger**: Available via `workflow_dispatch`
+
+**Required GitHub secret**: `INTERNAL_JOBS_SECRET` (must match the value in your VPS `.env`)
+
+The workflow SSHs into the VPS and triggers the ingest endpoint from within the Docker network.
+
+#### Ingestion Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `INGEST_ENABLED` | `false` | Enable ingestion logic |
+| `INGEST_SUBJECTS` | `fiction,science,history` | Subjects to ingest |
+| `INGEST_BOOKS_MAX` | `100` | Target total unique books |
+| `INGEST_AUTHORS_MAX` | `100` | Target total unique authors |
+| `INGEST_BOOKS_BATCH_SIZE` | `50` | Books per API batch |
+| `INGEST_RPS` | `1` | Requests per second (rate limit) |
+| `INGEST_MAX_RETRIES` | `3` | Max retry attempts |
+| `INGEST_FRESH_DAYS` | `7` | Re-fetch freshness threshold |
+| `INTERNAL_JOBS_SECRET` | - | Required secret for triggering |
+
 ### Epic 6: SQL & Search Learning (Exercises) - TODO
 - [ ] Populate the DB with 10k+ books from Open Library.
 - [ ] Experiment with `EXPLAIN ANALYZE` on complex search queries.
