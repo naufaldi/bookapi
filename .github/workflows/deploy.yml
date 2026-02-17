@@ -93,6 +93,9 @@ jobs:
             # Pull latest code
             git pull origin main
             
+            # Run migrations inside the API container (has Go and DB access)
+            docker compose exec -T api sh -c "go run ./cmd/migrate -command up"
+            
             # Pull new Docker image
             docker compose pull api
             

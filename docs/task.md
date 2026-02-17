@@ -100,7 +100,7 @@ This document tracks the implementation progress of RFC requirements from `docs/
 | Epic 0: Runtime Hygiene & Config      | ✅ Complete    | 3/3      |
 | Epic 1: Observability Baseline        | ✅ Complete    | 4/4      |
 | Epic 2: API Contract & v1             | ✅ Complete    | 3/3      |
-| Epic 3: Data Layer Hardening          | ⚠️ Partial     | 2.5/3    |
+| Epic 3: Data Layer Hardening          | ✅ Complete    | 3/3      |
 | Epic 4: Catalog & Open Library Client | ✅ Complete    | 5/5      |
 | Epic 5: Ingestion Job (Cron)          | ✅ Complete    | 3/3      |
 | Epic 6: SQL & Search Learning         | ✅ Complete    | 4/4      |
@@ -131,7 +131,7 @@ This document tracks the implementation progress of RFC requirements from `docs/
 ### Epic 3: Data Layer Hardening
 
 - [x] 6.3.1 Add context timeouts to all `PostgresRepo` methods.
-- [?] 6.3.2 Implement `goose` for migration management and update CI/Deployment scripts. (Goose syntax used + dependency added, but not integrated into app)
+- [x] 6.3.2 Implement `goose` for migration management and update CI/Deployment scripts. (Migrate cmd exists, CI updated to run migrations in container)
 - [x] 6.3.3 Add missing indexes for `users(email)`, `sessions(user_id)`, and `reading_list(user_id)`.
 
 ### Epic 4: Catalog & Open Library Client
