@@ -110,6 +110,45 @@ func (r *PostgresRepo) List(ctx context.Context, q Query) ([]Book, int, error) {
 		order = "DESC"
 	}
 
+	// Cursor-based pagination
+	// If cursor or after_id is provided, use cursor-based pagination instead of offset
+	useCursor := q.Cursor != "" || q.AfterID != ""
+
+	// Decode cursor if provided
+	var cursorAfterID string
+	if q.Cursor != "" {
+		cursorData, err := DecodeCursor(q.Cursor)
+		if err == nil && cursorData.AfterID != "" {
+			cursorAfterID = cursorData.AfterID
+		}
+	}
+	if q.AfterID != "" {
+		cursorAfterID = q.AfterID
+	}
+
+	// Add cursor condition if provided
+	if cursorAfterID != "" && sortCol == "b.created_at" {
+		// For created_at sort, we can use the ID as cursor
+		if order == "ASC" {
+			where += fmt.Sprintf(" AND (b.created_at, b.id) > (SELECT created_at, id FROM books WHERE id = $%d)", argn)
+			args = append(args, cursorAfterID)
+			argn++
+		} else {
+			where += fmt.Sprintf(" AND (b.created_at, b.id) < (SELECT created_at, id FROM books WHERE id = $%d)", argn)
+			args = append(args, cursorAfterID)
+			argn++
+		}
+	} else if cursorAfterID != "" {
+		// Fallback: use id comparison for other sort columns
+		if order == "ASC" {
+			where += fmt.Sprintf(" AND b.id > $%d", argn)
+		} else {
+			where += fmt.Sprintf(" AND b.id < $%d", argn)
+		}
+		args = append(args, cursorAfterID)
+		argn++
+	}
+
 	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM books b %s %s", ratingJoin, where)
 	var total int
 	timeoutCtx, cancel := r.withTimeout(ctx)

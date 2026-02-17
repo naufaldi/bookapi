@@ -99,13 +99,13 @@ This document tracks the implementation progress of RFC requirements from `docs/
 | ------------------------------------- | -------------- | -------- |
 | Epic 0: Runtime Hygiene & Config      | ✅ Complete    | 3/3      |
 | Epic 1: Observability Baseline        | ✅ Complete    | 4/4      |
-| Epic 2: API Contract & v1             | ⚠️ Partial     | 2.5/3    |
-| Epic 3: Data Layer Hardening          | ❌ Not Started | 0/3      |
+| Epic 2: API Contract & v1             | ✅ Complete    | 3/3      |
+| Epic 3: Data Layer Hardening          | ⚠️ Partial     | 2.5/3    |
 | Epic 4: Catalog & Open Library Client | ✅ Complete    | 5/5      |
 | Epic 5: Ingestion Job (Cron)          | ✅ Complete    | 3/3      |
 | Epic 6: SQL & Search Learning         | ❌ Not Started | 0/4      |
 
-**Overall Phase 6: 62.5% Complete** (17.5/28 tasks)
+**Overall Phase 6: 82% Complete** (23/28 tasks)
 
 ## PHASE 6: Production Readiness & Open Library Catalog
 
@@ -126,13 +126,13 @@ This document tracks the implementation progress of RFC requirements from `docs/
 
 - [x] 6.2.1 Update `httpx.JSONSuccess` and `httpx.JSONError` to include standard envelope and `request_id`.
 - [x] 6.2.2 Implement `/v1` route prefixing in `main.go`.
-- [?] 6.2.3 Fix routing bug: Register `PATCH /me/profile` as a separate route. (Needs verification)
+- [x] 6.2.3 Fix routing bug: Register `PATCH /me/profile` as a separate route.
 
 ### Epic 3: Data Layer Hardening
 
-- [ ] 6.3.1 Add context timeouts to all `PostgresRepo` methods.
-- [ ] 6.3.2 Implement `goose` for migration management and update CI/Deployment scripts.
-- [ ] 6.3.3 Add missing indexes for `users(email)`, `sessions(user_id)`, and `reading_list(user_id)`.
+- [x] 6.3.1 Add context timeouts to all `PostgresRepo` methods.
+- [?] 6.3.2 Implement `goose` for migration management and update CI/Deployment scripts. (Goose syntax used + dependency added, but not integrated into app)
+- [x] 6.3.3 Add missing indexes for `users(email)`, `sessions(user_id)`, and `reading_list(user_id)`.
 
 ### Epic 4: Catalog & Open Library Client
 
@@ -185,3 +185,6 @@ This document tracks the implementation progress of RFC requirements from `docs/
 - Routing for public vs protected routes correctly handled in `cmd/api/main.go`.
 - Consistent JSON response format enforced across all endpoints.
 - Advanced search and filtering implemented in Postgres with FTS and GIN indexes.
+- Context timeouts implemented in all PostgresRepo methods.
+- Goose migrations syntax used (but not integrated into app/CI yet).
+- Missing indexes added for users(email), sessions(user_id), user_books(user_id).

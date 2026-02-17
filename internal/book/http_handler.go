@@ -18,12 +18,14 @@ func NewHTTPHandler(service *Service) *HTTPHandler {
 
 // List handles GET /books
 // @Summary List books
-// @Description Get a paginated list of books with optional filtering and search
+// @Description Get a paginated list of books with optional filtering and search. Supports both offset-based (page/page_size) and cursor-based pagination.
 // @Tags books
 // @Accept json
 // @Produce json
-// @Param page query int false "Page number" default(1)
-// @Param page_size query int false "Items per page" default(20)
+// @Param page query int false "Page number (offset-based)" default(1)
+// @Param page_size query int false "Items per page (offset-based)" default(20)
+// @Param cursor query string false "Cursor for cursor-based pagination (base64 encoded)"
+// @Param after_id query string false "After ID for cursor-based pagination"
 // @Param q query string false "Simple search query"
 // @Param search query string false "Full-text search query"
 // @Param genre query string false "Filter by genre"
@@ -51,6 +53,11 @@ func (h *HTTPHandler) List(w http.ResponseWriter, r *http.Request) {
 		Language:  query.Get("language"),
 	}
 
+	// Cursor-based pagination
+	params.Cursor = query.Get("cursor")
+	params.AfterID = query.Get("after_id")
+
+	// Parse other filters
 	if genres := query.Get("genres"); genres != "" {
 		params.Genres = strings.Split(genres, ",")
 	}
@@ -73,6 +80,7 @@ func (h *HTTPHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Offset-based pagination (fallback if no cursor)
 	page, _ := strconv.Atoi(query.Get("page"))
 	if page < 1 {
 		page = 1
@@ -90,12 +98,28 @@ func (h *HTTPHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.JSONSuccess(w, r, books, map[string]any{
-		"page":        page,
-		"page_size":   pageSize,
-		"total":       total,
-		"total_pages": (total + pageSize - 1) / pageSize,
-	})
+	// Build response meta - different format for cursor vs offset pagination
+	var meta map[string]any
+
+	if params.Cursor != "" || params.AfterID != "" {
+		// Cursor-based pagination response
+		meta = map[string]any{
+			"total":    total,
+			"has_more": len(books) == params.Limit,
+		}
+		if len(books) > 0 && len(books) == params.Limit {
+			lastBook := books[len(books)-1]
+			meta["next_cursor"] = EncodeCursor(CursorData{AfterID: lastBook.ID})
+		}
+	} else {
+		// Offset-based pagination response (default)
+		meta = map[string]any{
+			"page":        page,
+			"page_size":   pageSize,
+			"total":       total,
+			"total_pages": (total + pageSize - 1) / pageSize,
+		}
+	}
 }
 
 // GetByISBN handles GET /books/{isbn}

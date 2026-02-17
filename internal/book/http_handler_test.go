@@ -2,6 +2,7 @@ package book
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -43,6 +44,36 @@ func TestHTTPHandler_List(t *testing.T) {
 		handler.List(w, r)
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
+	})
+
+	t.Run("success with cursor", func(t *testing.T) {
+		mockRepo.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, q Query) ([]Book, int, error) {
+				assert.Equal(t, "abc123", q.Cursor, "cursor should be parsed from query")
+				return []Book{testBook}, 1, nil
+			})
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/books?cursor=abc123", nil)
+
+		handler.List(w, r)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("success with after_id", func(t *testing.T) {
+		mockRepo.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, q Query) ([]Book, int, error) {
+				assert.Equal(t, "uuid-123", q.AfterID, "after_id should be parsed from query")
+				return []Book{testBook}, 1, nil
+			})
+
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/books?after_id=uuid-123", nil)
+
+		handler.List(w, r)
+
+		assert.Equal(t, http.StatusOK, w.Code)
 	})
 }
 

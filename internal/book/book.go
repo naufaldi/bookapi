@@ -41,4 +41,7 @@ type Query struct {
 	Desc      bool
 	Limit     int
 	Offset    int
+	// Cursor pagination
+	Cursor  string // Base64 encoded cursor for next page
+	AfterID string // Alternative: use book ID directly
 }
