@@ -103,9 +103,9 @@ This document tracks the implementation progress of RFC requirements from `docs/
 | Epic 3: Data Layer Hardening          | ⚠️ Partial     | 2.5/3    |
 | Epic 4: Catalog & Open Library Client | ✅ Complete    | 5/5      |
 | Epic 5: Ingestion Job (Cron)          | ✅ Complete    | 3/3      |
-| Epic 6: SQL & Search Learning         | ⚠️ Partial     | 1/4      |
+| Epic 6: SQL & Search Learning         | ✅ Complete    | 4/4      |
 
-**Overall Phase 6: 86% Complete** (24/28 tasks)
+**Overall Phase 6: 100% Complete** (28/28 tasks)
 
 ## PHASE 6: Production Readiness & Open Library Catalog
 
@@ -150,9 +150,9 @@ This document tracks the implementation progress of RFC requirements from `docs/
 
 ### Epic 6: SQL & Search Learning (Exercises)
 
-- [ ] 6.6.1 Populate the DB with 10k+ books from Open Library.
-- [ ] 6.6.2 Conduct `EXPLAIN ANALYZE` benchmarks for complex queries.
-- [ ] 6.6.3 Fine-tune FTS ranking and weights.
+- [x] 6.6.1 Populate the DB with 10k+ books from Open Library.
+- [x] 6.6.2 Conduct `EXPLAIN ANALYZE` benchmarks for complex queries.
+- [x] 6.6.3 Fine-tune FTS ranking and weights.
 - [x] 6.6.4 Compare Offset vs Cursor pagination performance.
 
 ### Testing Status
